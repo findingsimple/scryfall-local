@@ -9,7 +9,8 @@
       "Bash(python3:*)",
       "Bash(source .venv/bin/activate)",
       "Bash(pip install:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(python -m src.cli:*)"
     ]
   }
 }

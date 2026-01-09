@@ -50,23 +50,50 @@ Add to your Claude Code MCP configuration (`~/.config/claude/mcp_servers.json`):
 }
 ```
 
-### Downloading Card Data
+### CLI Commands
 
-Before using the server, download the bulk card data:
+The CLI tool manages downloading and importing card data:
 
 ```bash
-# Download all cards (2.29 GB) - run in Python
-python -c "
-import asyncio
-from pathlib import Path
-from src.data_manager import DataManager
+source .venv/bin/activate
 
-async def download():
-    manager = DataManager(Path('./data'))
-    await manager.download_bulk_data('all_cards')
+# Check current data status
+python -m src.cli status
 
-asyncio.run(download())
-"
+# Download bulk card data (~2.3 GB for all_cards)
+python -m src.cli download
+
+# Download a smaller dataset (~160 MB)
+python -m src.cli download --type oracle_cards
+
+# Force re-download even if data is current
+python -m src.cli download --force
+
+# Import downloaded JSON into SQLite database
+python -m src.cli import
+
+# Import a specific JSON file
+python -m src.cli import --file path/to/cards.json
+```
+
+#### Available Data Types
+
+| Type | Size | Description |
+|------|------|-------------|
+| `all_cards` | ~2.3 GB | Every card in every language (default) |
+| `oracle_cards` | ~160 MB | One card per Oracle ID |
+| `default_cards` | ~500 MB | Every card in English |
+
+#### Workflow
+
+1. **Download**: Fetches bulk JSON from Scryfall with progress bar
+2. **Import**: Loads JSON into SQLite database with FTS5 indexing
+
+If you download data separately, run `import` to load it into the database:
+
+```bash
+python -m src.cli download   # Downloads JSON file
+python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
 ```
 
 ## MCP Tools
