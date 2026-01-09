@@ -1,0 +1,66 @@
+// Scryfall Query Language Grammar - Simplified
+// Supports: name, colors, cmc, type, oracle text, set, rarity
+// Boolean operators: implicit AND, explicit OR, negation (-)
+
+start: query
+
+query: or_expr
+
+or_expr: and_expr (OR and_expr)*
+
+and_expr: term+
+
+term: NEGATION? atom
+
+atom: "(" or_expr ")"
+    | filter
+    | QUOTED_STRING  -> exact_name
+    | VALUE          -> partial_name
+
+filter: color_filter
+      | cmc_filter
+      | type_filter
+      | oracle_filter
+      | set_filter
+      | rarity_filter
+
+// Color: c:blue, c:urg, c>=rg, color:white
+color_filter: COLOR_PREFIX COMP_OP VALUE
+            | COLOR_PREFIX VALUE
+
+// CMC: cmc:3, cmc>=5, mv<2
+cmc_filter: CMC_PREFIX COMP_OP NUMBER
+          | CMC_PREFIX NUMBER
+
+// Type: t:creature, type:"legendary creature"
+type_filter: TYPE_PREFIX QUOTED_STRING
+           | TYPE_PREFIX VALUE
+
+// Oracle: o:flying, oracle:"enters the battlefield"
+oracle_filter: ORACLE_PREFIX QUOTED_STRING
+             | ORACLE_PREFIX VALUE
+
+// Set: set:neo, e:m19
+set_filter: SET_PREFIX VALUE
+
+// Rarity: r:mythic, rarity:rare
+rarity_filter: RARITY_PREFIX VALUE
+
+// Terminals - order matters for priority
+COLOR_PREFIX: /(?:c|color|colors|ci|id):/i
+CMC_PREFIX: /(?:cmc|mv|manavalue):/i
+TYPE_PREFIX: /(?:t|type):/i
+ORACLE_PREFIX: /(?:o|oracle|text):/i
+SET_PREFIX: /(?:set|e|s|edition):/i
+RARITY_PREFIX: /(?:r|rarity):/i
+
+COMP_OP: ">=" | "<=" | ">" | "<" | "=" | "!="
+NEGATION: "-"
+OR: /OR/i
+
+NUMBER: /\d+/
+VALUE: /[a-zA-Z][a-zA-Z0-9]*/
+QUOTED_STRING: /"[^"]+"/
+
+%import common.WS
+%ignore WS
