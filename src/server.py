@@ -410,10 +410,12 @@ async def run_server(data_dir: Path | None = None) -> None:
     """Run the MCP server.
 
     Args:
-        data_dir: Optional data directory (defaults to ./data)
+        data_dir: Optional data directory (defaults to ./data relative to project root)
     """
     if data_dir is None:
-        data_dir = Path("./data")
+        # Use absolute path relative to this file's location
+        project_root = Path(__file__).parent.parent
+        data_dir = project_root / "data"
 
     data_dir.mkdir(parents=True, exist_ok=True)
 

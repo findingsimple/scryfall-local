@@ -25,29 +25,32 @@ pip install -e ".[dev]"
 
 ## Usage
 
-### Running the Server
-
-```bash
-# Run the MCP server
-source .venv/bin/activate
-python -m src.server
-```
-
 ### Adding to Claude Code
 
-Add to your Claude Code MCP configuration (`~/.config/claude/mcp_servers.json`):
+Register the MCP server using the Claude Code CLI:
 
-```json
-{
-  "scryfall-local": {
-    "command": "python",
-    "args": ["-m", "src.server"],
-    "cwd": "/path/to/scryfall-local",
-    "env": {
-      "VIRTUAL_ENV": "/path/to/scryfall-local/.venv"
-    }
-  }
-}
+```bash
+# Add for all projects (user scope)
+claude mcp add scryfall-local -s user -- /path/to/scryfall-local/.venv/bin/python -m src.server
+
+# Or add for current project only (local scope)
+claude mcp add scryfall-local -- /path/to/scryfall-local/.venv/bin/python -m src.server
+```
+
+Replace `/path/to/scryfall-local` with the actual path to this repository.
+
+**Important notes:**
+- You do **not** need to manually start the server - Claude Code automatically starts MCP servers when it launches
+- After adding, restart Claude Code for the server to be available
+- Verify the server is connected with `claude mcp list`
+
+### Running the Server Manually (Development/Testing)
+
+For development or testing outside of Claude Code:
+
+```bash
+source .venv/bin/activate
+python -m src.server
 ```
 
 ### CLI Commands

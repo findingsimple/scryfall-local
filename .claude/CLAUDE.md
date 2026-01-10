@@ -37,9 +37,23 @@ python -m src.cli download
 # Import JSON into database
 python -m src.cli import
 
-# Run MCP server
+# Run MCP server manually (for testing only)
 python -m src.server
 ```
+
+## MCP Server Setup
+
+Register with Claude Code CLI (no manual server start needed):
+
+```bash
+# Add for all projects
+claude mcp add scryfall-local -s user -- /path/to/.venv/bin/python -m src.server
+
+# Verify connection
+claude mcp list
+```
+
+Claude Code automatically starts the server - no need to run it manually.
 
 ## Running Tests
 
