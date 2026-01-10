@@ -193,6 +193,15 @@ The following syntax is documented for future implementation:
 | Banned in format | `banned:modern` | Cards banned in format |
 | Watermark | `wm:phyrexian` | Faction/guild watermarks |
 
+### Not Planned
+
+The following features are intentionally out of scope for this project:
+
+| Feature | Reason |
+|---------|--------|
+| Rate limiting | Designed for local use only; no external API calls during queries |
+| Query caching | SQLite with FTS5 is already fast enough for local use |
+
 When using unsupported syntax, the server returns a helpful error message with suggestions for supported alternatives.
 
 ## Error Handling
