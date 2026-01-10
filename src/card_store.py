@@ -482,6 +482,10 @@ class CardStore:
         if "name_exact" in filters:
             conditions.append("name = ?")
             params.append(filters["name_exact"])
+        if "name_strict" in filters:
+            # Strict exact match - case-sensitive, no partial matching
+            conditions.append("name = ? COLLATE BINARY")
+            params.append(filters["name_strict"])
         if "name_partial" in filters:
             conditions.append("LOWER(name) LIKE ?")
             params.append(f"%{filters['name_partial'].lower()}%")
@@ -560,6 +564,17 @@ class CardStore:
                 conditions.append("LOWER(oracle_text) LIKE ?")
                 params.append(f"%{oracle_values.lower()}%")
 
+        # Flavor text filter (can be single value or list)
+        if "flavor_text" in filters:
+            flavor_values = filters["flavor_text"]
+            if isinstance(flavor_values, list):
+                for flavor_val in flavor_values:
+                    conditions.append("LOWER(json_extract(raw_data, '$.flavor_text')) LIKE ?")
+                    params.append(f"%{flavor_val.lower()}%")
+            else:
+                conditions.append("LOWER(json_extract(raw_data, '$.flavor_text')) LIKE ?")
+                params.append(f"%{flavor_values.lower()}%")
+
         # Set filter
         if "set" in filters:
             conditions.append("LOWER(set_code) = ?")
@@ -609,6 +624,37 @@ class CardStore:
                 # Cast toughness to integer for comparison (excludes * and NULL)
                 conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
                 params.append(value)
+
+        # Loyalty filter (for planeswalkers)
+        if "loyalty" in filters:
+            loyalty_filter = filters["loyalty"]
+            value = loyalty_filter.get("value")
+            operator = loyalty_filter.get("operator", "=")
+            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+            sql_op = op_map.get(operator, "=")
+            # loyalty is stored in raw_data as a string like "3" or "X"
+            conditions.append(
+                f"CAST(json_extract(raw_data, '$.loyalty') AS INTEGER) {sql_op} ?"
+            )
+            params.append(value)
+
+        # Collector number filter
+        if "collector_number" in filters:
+            cn_filter = filters["collector_number"]
+            value = cn_filter.get("value")
+            operator = cn_filter.get("operator", "=")
+            if operator == "=":
+                # Exact match on collector number
+                conditions.append("json_extract(raw_data, '$.collector_number') = ?")
+                params.append(str(value))
+            else:
+                # For range comparisons, try numeric if possible
+                op_map = {">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+                sql_op = op_map.get(operator, "=")
+                conditions.append(
+                    f"CAST(json_extract(raw_data, '$.collector_number') AS INTEGER) {sql_op} ?"
+                )
+                params.append(int(value) if str(value).isdigit() else value)
 
         # Price filter
         if "price" in filters:

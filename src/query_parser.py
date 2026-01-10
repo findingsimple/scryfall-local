@@ -12,7 +12,7 @@ from typing import Any
 
 # Supported syntax for error messages
 SUPPORTED_SYNTAX = [
-    'name search: "Lightning Bolt" (exact) or bolt (partial)',
+    'name search: "Lightning Bolt" (exact), bolt (partial), !"Exact Name" (strict)',
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
     "color identity: id:wubrg, identity:esper, ci:rg (for Commander)",
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
@@ -24,6 +24,9 @@ SUPPORTED_SYNTAX = [
     "format: f:standard, f:modern, f:legacy, f:vintage, f:commander",
     "power: pow:3, pow>=4, power<2",
     "toughness: tou:3, tou>=4, toughness<2",
+    "loyalty: loy:3, loy>=4, loyalty<5 (planeswalkers)",
+    "flavor text: ft:\"flavor text\" (search flavor text)",
+    "collector number: cn:123, cn:1a (find specific printings)",
     "price: usd<1, usd>=10, eur<5",
     "boolean: implicit AND, OR, - (negation), parentheses",
 ]
@@ -187,6 +190,8 @@ TOKEN_PATTERNS = [
     (r'(?:t|type):([a-zA-Z]+)', 'TYPE'),
     (r'(?:o|oracle|text):"([^"]+)"', 'ORACLE_QUOTED'),
     (r'(?:o|oracle|text):([a-zA-Z]+)', 'ORACLE'),
+    (r'(?:ft|flavor):"([^"]+)"', 'FLAVOR_QUOTED'),
+    (r'(?:ft|flavor):([a-zA-Z]+)', 'FLAVOR'),
     (r'(?:set|e|s|edition):([a-zA-Z0-9]+)', 'SET'),
     (r'(?:r|rarity):([a-zA-Z]+)', 'RARITY'),
     (r'(?:f|format|legal|legality):([a-zA-Z]+)', 'FORMAT'),
@@ -194,13 +199,16 @@ TOKEN_PATTERNS = [
     (r'(?:kw|keyword|keywords):([a-zA-Z]+)', 'KEYWORD'),
     (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
     (r'(?:tou|toughness)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'TOUGHNESS'),
+    (r'(?:loy|loyalty)(>=|<=|>|<|=|!=|:)(\d+)', 'LOYALTY'),
+    (r'(?:cn|number)(>=|<=|>|<|=|!=|:)([a-zA-Z0-9]+)', 'COLLECTOR_NUMBER'),
     (r'(?:usd|eur|tix)(>=|<=|>|<|=|!=|:)(\d+(?:\.\d+)?)', 'PRICE'),
     # Boolean operators
     (r'\bOR\b', 'OR'),
     (r'-', 'NEGATION'),
     (r'\(', 'LPAREN'),
     (r'\)', 'RPAREN'),
-    # Name patterns
+    # Name patterns - strict exact match with ! prefix comes first
+    (r'!"([^"]+)"', 'STRICT_NAME'),
     (r'"([^"]+)"', 'EXACT_NAME'),
     (r'([a-zA-Z][a-zA-Z0-9_-]*)', 'PARTIAL_NAME'),
 ]
@@ -262,12 +270,16 @@ class QueryParser:
                         operator = match.group(1)
                         value = int(match.group(2))
                         tokens.append((token_type, (operator, value)))
-                    elif token_type in ('POWER', 'TOUGHNESS'):
+                    elif token_type in ('POWER', 'TOUGHNESS', 'LOYALTY'):
                         operator = match.group(1)
                         value = match.group(2)
                         # Keep * as string, convert numbers to int
                         if value != '*':
                             value = int(value)
+                        tokens.append((token_type, (operator, value)))
+                    elif token_type == 'COLLECTOR_NUMBER':
+                        operator = match.group(1)
+                        value = match.group(2)
                         tokens.append((token_type, (operator, value)))
                     elif token_type == 'PRICE':
                         # Extract currency from the full match
@@ -281,11 +293,11 @@ class QueryParser:
                         operator = match.group(1)
                         value = float(match.group(2))
                         tokens.append((token_type, (currency, operator, value)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED'):
+                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD'):
+                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR'):
                         tokens.append((token_type, match.group(1)))
-                    elif token_type == 'EXACT_NAME':
+                    elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type == 'PARTIAL_NAME':
                         tokens.append((token_type, match.group(1)))
@@ -369,7 +381,7 @@ class QueryParser:
             if filter_key and filter_value is not None:
                 # Handle multiple values for same filter type (e.g., keyword:flying keyword:trample)
                 # These filter types can have multiple values that should be ANDed together
-                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not'}
+                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not'}
 
                 if filter_key in multi_value_filters:
                     if filter_key not in filters:
@@ -403,14 +415,18 @@ class QueryParser:
             'CMC': 'cmc',
             'TYPE': 'type',
             'ORACLE': 'oracle_text',
+            'FLAVOR': 'flavor_text',
             'SET': 'set',
             'RARITY': 'rarity',
             'FORMAT': 'format',
             'KEYWORD': 'keyword',
             'POWER': 'power',
             'TOUGHNESS': 'toughness',
+            'LOYALTY': 'loyalty',
+            'COLLECTOR_NUMBER': 'collector_number',
             'PRICE': 'price',
             'EXACT_NAME': 'name_exact',
+            'STRICT_NAME': 'name_strict',
             'PARTIAL_NAME': 'name_partial',
         }
         key = key_map.get(token_type)
@@ -437,7 +453,14 @@ class QueryParser:
                 operator = '='
             return {"operator": operator, "value": num}
 
-        if token_type in ('POWER', 'TOUGHNESS'):
+        if token_type in ('POWER', 'TOUGHNESS', 'LOYALTY'):
+            operator, val = value
+            # Normalize : to =
+            if operator == ':':
+                operator = '='
+            return {"operator": operator, "value": val}
+
+        if token_type == 'COLLECTOR_NUMBER':
             operator, val = value
             # Normalize : to =
             if operator == ':':
@@ -464,7 +487,7 @@ class QueryParser:
             # Normalize to title case to match Scryfall format ("Flying", "Deathtouch")
             return value.title()
 
-        if token_type in ('TYPE', 'ORACLE', 'EXACT_NAME', 'PARTIAL_NAME'):
+        if token_type in ('TYPE', 'ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
             return value
 
         return None

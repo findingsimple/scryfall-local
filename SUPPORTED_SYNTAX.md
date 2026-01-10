@@ -8,7 +8,8 @@ This document describes the query syntax supported by the Scryfall Local MCP ser
 
 | Syntax | Description | Example |
 |--------|-------------|---------|
-| `"card name"` | Exact name match | `"Lightning Bolt"` |
+| `"card name"` | Exact name match (case-insensitive) | `"Lightning Bolt"` |
+| `!"card name"` | Strict exact match (case-sensitive) | `!"Lightning Bolt"` |
 | `word` | Partial name match | `bolt` |
 
 ### Colors
@@ -173,6 +174,34 @@ o:"enters the battlefield"
 | `tou<N` | Toughness < N | `tou<3` |
 | `toughness:N` | Alias for tou: | `toughness:7` |
 
+### Loyalty
+
+For planeswalker cards.
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `loy:N` | Exact loyalty | `loy:3` |
+| `loy>=N` | Loyalty >= N | `loy>=4` |
+| `loy<N` | Loyalty < N | `loy<5` |
+| `loyalty:N` | Alias for loy: | `loyalty:4` |
+
+### Flavor Text
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `ft:word` | Cards with word in flavor text | `ft:doom` |
+| `ft:"phrase"` | Cards with phrase in flavor text | `ft:"the dead shall rise"` |
+| `flavor:word` | Alias for ft: | `flavor:dragon` |
+
+### Collector Number
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `cn:N` | Exact collector number | `cn:123` |
+| `cn:code` | Collector number with suffix | `cn:1a` |
+| `cn>N` | Collector number > N | `cn>100` |
+| `number:N` | Alias for cn: | `number:50` |
+
 ### Price
 
 | Syntax | Description | Example |
@@ -192,10 +221,6 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
-| Loyalty | `loy:3`, `loy>=4` | Planeswalker starting loyalty |
-| Flavor text | `ft:"text"` | Search flavor text |
-| Collector number | `cn:123` | Find specific printings |
-| Exact name match | `!"Lightning Bolt"` | Stricter than quoted name |
 | Artist | `a:"Rebecca Guay"` | Search by illustrator |
 | Year | `year:2023` | Release year |
 | Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |

@@ -535,6 +535,129 @@ class TestQueryParserKeyword:
         assert result.filters["keyword_not"] == ["Trample"]
 
 
+class TestQueryParserLoyalty:
+    """Test loyalty queries for planeswalkers."""
+
+    def test_parse_loyalty_exact(self):
+        """Loyalty filter: loy:3."""
+        parser = QueryParser()
+        result = parser.parse("loy:3")
+
+        assert result.filters["loyalty"] == {"operator": "=", "value": 3}
+
+    def test_parse_loyalty_greater_equal(self):
+        """Loyalty filter: loy>=4."""
+        parser = QueryParser()
+        result = parser.parse("loy>=4")
+
+        assert result.filters["loyalty"] == {"operator": ">=", "value": 4}
+
+    def test_parse_loyalty_less_than(self):
+        """Loyalty filter: loyalty<5."""
+        parser = QueryParser()
+        result = parser.parse("loyalty<5")
+
+        assert result.filters["loyalty"] == {"operator": "<", "value": 5}
+
+    def test_parse_loyalty_with_type(self):
+        """Loyalty combined with type: t:planeswalker loy>=4."""
+        parser = QueryParser()
+        result = parser.parse("t:planeswalker loy>=4")
+
+        assert result.filters["type"] == ["planeswalker"]
+        assert result.filters["loyalty"] == {"operator": ">=", "value": 4}
+
+
+class TestQueryParserFlavorText:
+    """Test flavor text queries."""
+
+    def test_parse_flavor_text_simple(self):
+        """Flavor text filter: ft:doom."""
+        parser = QueryParser()
+        result = parser.parse("ft:doom")
+
+        assert result.filters["flavor_text"] == ["doom"]
+
+    def test_parse_flavor_text_quoted(self):
+        """Quoted flavor text: ft:"the dead shall rise"."""
+        parser = QueryParser()
+        result = parser.parse('ft:"the dead shall rise"')
+
+        assert result.filters["flavor_text"] == ["the dead shall rise"]
+
+    def test_parse_flavor_alias(self):
+        """Flavor alias: flavor:dragon."""
+        parser = QueryParser()
+        result = parser.parse("flavor:dragon")
+
+        assert result.filters["flavor_text"] == ["dragon"]
+
+    def test_parse_multiple_flavor_texts(self):
+        """Multiple flavor text filters: ft:doom ft:death."""
+        parser = QueryParser()
+        result = parser.parse("ft:doom ft:death")
+
+        assert result.filters["flavor_text"] == ["doom", "death"]
+
+
+class TestQueryParserCollectorNumber:
+    """Test collector number queries."""
+
+    def test_parse_collector_number_exact(self):
+        """Collector number filter: cn:123."""
+        parser = QueryParser()
+        result = parser.parse("cn:123")
+
+        assert result.filters["collector_number"] == {"operator": "=", "value": "123"}
+
+    def test_parse_collector_number_with_letter(self):
+        """Collector number with letter: cn:1a."""
+        parser = QueryParser()
+        result = parser.parse("cn:1a")
+
+        assert result.filters["collector_number"] == {"operator": "=", "value": "1a"}
+
+    def test_parse_collector_number_greater_than(self):
+        """Collector number range: cn>100."""
+        parser = QueryParser()
+        result = parser.parse("cn>100")
+
+        assert result.filters["collector_number"] == {"operator": ">", "value": "100"}
+
+    def test_parse_collector_number_alias(self):
+        """Number alias: number:50."""
+        parser = QueryParser()
+        result = parser.parse("number:50")
+
+        assert result.filters["collector_number"] == {"operator": "=", "value": "50"}
+
+
+class TestQueryParserStrictName:
+    """Test strict exact name match with ! prefix."""
+
+    def test_parse_strict_name(self):
+        """Strict name match: !"Lightning Bolt"."""
+        parser = QueryParser()
+        result = parser.parse('!"Lightning Bolt"')
+
+        assert result.filters["name_strict"] == "Lightning Bolt"
+
+    def test_parse_strict_name_case_sensitive(self):
+        """Strict name is case-sensitive."""
+        parser = QueryParser()
+        result = parser.parse('!"Jace, the Mind Sculptor"')
+
+        assert result.filters["name_strict"] == "Jace, the Mind Sculptor"
+
+    def test_parse_strict_name_with_filters(self):
+        """Strict name with other filters: !"Bolt" c:red."""
+        parser = QueryParser()
+        result = parser.parse('!"Bolt" c:red')
+
+        assert result.filters["name_strict"] == "Bolt"
+        assert result.filters["colors"]["value"] == ["R"]
+
+
 class TestQueryParserErrorHandling:
     """Test error handling and helpful messages."""
 
