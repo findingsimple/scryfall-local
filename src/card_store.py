@@ -515,6 +515,61 @@ class CardStore:
             conditions.append("LOWER(rarity) = ?")
             params.append(filters["rarity"].lower())
 
+        # Format legality filter
+        if "format" in filters:
+            format_name = filters["format"]
+            # legalities is stored as JSON like {"standard": "legal", "modern": "not_legal"}
+            # Check if the format value is "legal" or "restricted"
+            conditions.append(
+                f"(json_extract(legalities, '$.{format_name}') = 'legal' "
+                f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
+            )
+
+        # Power filter
+        if "power" in filters:
+            power_filter = filters["power"]
+            value = power_filter.get("value")
+            operator = power_filter.get("operator", "=")
+            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+            sql_op = op_map.get(operator, "=")
+            if value == "*":
+                # Match cards with * power
+                conditions.append("power = '*'")
+            else:
+                # Cast power to integer for comparison (excludes * and NULL)
+                conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
+                params.append(value)
+
+        # Toughness filter
+        if "toughness" in filters:
+            toughness_filter = filters["toughness"]
+            value = toughness_filter.get("value")
+            operator = toughness_filter.get("operator", "=")
+            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+            sql_op = op_map.get(operator, "=")
+            if value == "*":
+                # Match cards with * toughness
+                conditions.append("toughness = '*'")
+            else:
+                # Cast toughness to integer for comparison (excludes * and NULL)
+                conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
+                params.append(value)
+
+        # Price filter
+        if "price" in filters:
+            price_filter = filters["price"]
+            currency = price_filter.get("currency", "usd")
+            value = price_filter.get("value")
+            operator = price_filter.get("operator", "=")
+            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+            sql_op = op_map.get(operator, "=")
+            # prices is stored as JSON like {"usd": "1.50", "eur": "1.20"}
+            # Need to cast to REAL for numeric comparison
+            conditions.append(
+                f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
+            )
+            params.append(value)
+
         # Build and execute query
         if conditions:
             where_clause = " AND ".join(conditions)

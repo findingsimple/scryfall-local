@@ -273,6 +273,130 @@ class TestQueryParserBooleanOperators:
         assert result.has_or_clause
 
 
+class TestQueryParserFormat:
+    """Test format legality queries."""
+
+    def test_parse_format_standard(self):
+        """Format filter: f:standard."""
+        parser = QueryParser()
+        result = parser.parse("f:standard")
+
+        assert result.filters["format"] == "standard"
+
+    def test_parse_format_modern(self):
+        """Format filter: f:modern."""
+        parser = QueryParser()
+        result = parser.parse("f:modern")
+
+        assert result.filters["format"] == "modern"
+
+    def test_parse_format_commander(self):
+        """Format filter: f:commander."""
+        parser = QueryParser()
+        result = parser.parse("f:commander")
+
+        assert result.filters["format"] == "commander"
+
+    def test_parse_format_long_form(self):
+        """Format filter with full keyword: format:legacy."""
+        parser = QueryParser()
+        result = parser.parse("format:legacy")
+
+        assert result.filters["format"] == "legacy"
+
+
+class TestQueryParserPowerToughness:
+    """Test power and toughness queries."""
+
+    def test_parse_power_exact(self):
+        """Power filter: pow:3."""
+        parser = QueryParser()
+        result = parser.parse("pow:3")
+
+        assert result.filters["power"] == {"operator": "=", "value": 3}
+
+    def test_parse_power_greater_equal(self):
+        """Power filter: pow>=4."""
+        parser = QueryParser()
+        result = parser.parse("pow>=4")
+
+        assert result.filters["power"] == {"operator": ">=", "value": 4}
+
+    def test_parse_power_less_than(self):
+        """Power filter: power<2."""
+        parser = QueryParser()
+        result = parser.parse("power<2")
+
+        assert result.filters["power"] == {"operator": "<", "value": 2}
+
+    def test_parse_power_star(self):
+        """Power filter with star: pow:*."""
+        parser = QueryParser()
+        result = parser.parse("pow:*")
+
+        assert result.filters["power"] == {"operator": "=", "value": "*"}
+
+    def test_parse_toughness_exact(self):
+        """Toughness filter: tou:4."""
+        parser = QueryParser()
+        result = parser.parse("tou:4")
+
+        assert result.filters["toughness"] == {"operator": "=", "value": 4}
+
+    def test_parse_toughness_greater_equal(self):
+        """Toughness filter: tou>=5."""
+        parser = QueryParser()
+        result = parser.parse("tou>=5")
+
+        assert result.filters["toughness"] == {"operator": ">=", "value": 5}
+
+    def test_parse_toughness_long_form(self):
+        """Toughness filter with full keyword: toughness<=3."""
+        parser = QueryParser()
+        result = parser.parse("toughness<=3")
+
+        assert result.filters["toughness"] == {"operator": "<=", "value": 3}
+
+
+class TestQueryParserPrice:
+    """Test price queries."""
+
+    def test_parse_usd_less_than(self):
+        """Price filter: usd<1."""
+        parser = QueryParser()
+        result = parser.parse("usd<1")
+
+        assert result.filters["price"] == {"currency": "usd", "operator": "<", "value": 1.0}
+
+    def test_parse_usd_greater_equal(self):
+        """Price filter: usd>=10."""
+        parser = QueryParser()
+        result = parser.parse("usd>=10")
+
+        assert result.filters["price"] == {"currency": "usd", "operator": ">=", "value": 10.0}
+
+    def test_parse_usd_decimal(self):
+        """Price filter with decimal: usd<0.50."""
+        parser = QueryParser()
+        result = parser.parse("usd<0.50")
+
+        assert result.filters["price"] == {"currency": "usd", "operator": "<", "value": 0.50}
+
+    def test_parse_eur_price(self):
+        """Price filter in EUR: eur>=5."""
+        parser = QueryParser()
+        result = parser.parse("eur>=5")
+
+        assert result.filters["price"] == {"currency": "eur", "operator": ">=", "value": 5.0}
+
+    def test_parse_tix_price(self):
+        """Price filter in TIX: tix<1."""
+        parser = QueryParser()
+        result = parser.parse("tix<1")
+
+        assert result.filters["price"] == {"currency": "tix", "operator": "<", "value": 1.0}
+
+
 class TestQueryParserErrorHandling:
     """Test error handling and helpful messages."""
 
@@ -290,7 +414,7 @@ class TestQueryParserErrorHandling:
         parser = QueryParser()
 
         with pytest.raises(QueryError) as exc_info:
-            parser.parse("f:modern")  # Format not supported yet
+            parser.parse("a:rebecca")  # Artist not supported yet
 
         error = exc_info.value
         assert error.hint is not None

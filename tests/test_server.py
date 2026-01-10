@@ -105,7 +105,7 @@ class TestServerSearchCards:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "f:modern"},  # Unsupported syntax
+                    {"query": "a:rebecca"},  # Unsupported syntax (artist)
                 )
 
                 assert "error" in result
@@ -281,7 +281,7 @@ class TestServerResponseFormat:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "f:modern"},  # Unsupported
+                    {"query": "a:rebecca"},  # Unsupported (artist)
                 )
 
                 assert "error" in result

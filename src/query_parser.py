@@ -19,6 +19,10 @@ SUPPORTED_SYNTAX = [
     "oracle text: o:flying, o:\"enters the battlefield\"",
     "set: set:neo, e:m19, s:cmd",
     "rarity: r:mythic, r:rare, r:uncommon, r:common",
+    "format: f:standard, f:modern, f:legacy, f:vintage, f:commander",
+    "power: pow:3, pow>=4, power<2",
+    "toughness: tou:3, tou>=4, toughness<2",
+    "price: usd<1, usd>=10, eur<5",
     "boolean: implicit AND, OR, - (negation), parentheses",
 ]
 
@@ -133,6 +137,10 @@ TOKEN_PATTERNS = [
     (r'(?:o|oracle|text):([a-zA-Z]+)', 'ORACLE'),
     (r'(?:set|e|s|edition):([a-zA-Z0-9]+)', 'SET'),
     (r'(?:r|rarity):([a-zA-Z]+)', 'RARITY'),
+    (r'(?:f|format|legal|legality):([a-zA-Z]+)', 'FORMAT'),
+    (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
+    (r'(?:tou|toughness)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'TOUGHNESS'),
+    (r'(?:usd|eur|tix)(>=|<=|>|<|=|!=|:)(\d+(?:\.\d+)?)', 'PRICE'),
     # Boolean operators
     (r'\bOR\b', 'OR'),
     (r'-', 'NEGATION'),
@@ -200,9 +208,28 @@ class QueryParser:
                         operator = match.group(1)
                         value = int(match.group(2))
                         tokens.append((token_type, (operator, value)))
+                    elif token_type in ('POWER', 'TOUGHNESS'):
+                        operator = match.group(1)
+                        value = match.group(2)
+                        # Keep * as string, convert numbers to int
+                        if value != '*':
+                            value = int(value)
+                        tokens.append((token_type, (operator, value)))
+                    elif token_type == 'PRICE':
+                        # Extract currency from the full match
+                        full_match = match.group(0).lower()
+                        if full_match.startswith('usd'):
+                            currency = 'usd'
+                        elif full_match.startswith('eur'):
+                            currency = 'eur'
+                        else:
+                            currency = 'tix'
+                        operator = match.group(1)
+                        value = float(match.group(2))
+                        tokens.append((token_type, (currency, operator, value)))
                     elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY'):
+                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type == 'EXACT_NAME':
                         tokens.append((token_type, match.group(1)))
@@ -313,6 +340,10 @@ class QueryParser:
             'ORACLE': 'oracle_text',
             'SET': 'set',
             'RARITY': 'rarity',
+            'FORMAT': 'format',
+            'POWER': 'power',
+            'TOUGHNESS': 'toughness',
+            'PRICE': 'price',
             'EXACT_NAME': 'name_exact',
             'PARTIAL_NAME': 'name_partial',
         }
@@ -335,6 +366,23 @@ class QueryParser:
                 operator = '='
             return {"operator": operator, "value": num}
 
+        if token_type in ('POWER', 'TOUGHNESS'):
+            operator, val = value
+            # Normalize : to =
+            if operator == ':':
+                operator = '='
+            return {"operator": operator, "value": val}
+
+        if token_type == 'PRICE':
+            currency, operator, val = value
+            # Normalize : to =
+            if operator == ':':
+                operator = '='
+            return {"currency": currency, "operator": operator, "value": val}
+
+        if token_type == 'FORMAT':
+            return value.lower()
+
         if token_type == 'RARITY':
             return RARITY_MAP.get(value.lower(), value.lower())
 
@@ -349,11 +397,6 @@ class QueryParser:
     def _check_unsupported(self, query: str) -> None:
         """Check for unsupported syntax and give helpful errors."""
         unsupported_patterns = {
-            r'\bf:': ("Format legality", "f:standard, f:modern"),
-            r'\bformat:': ("Format legality", "format:standard"),
-            r'\bpow[:<>=]': ("Power filter", "pow:3, pow>=4"),
-            r'\btou[:<>=]': ("Toughness filter", "tou:3, tou>=4"),
-            r'\busd[:<>=]': ("Price filter", "usd<1, usd>=10"),
             r'\ba:': ("Artist filter", 'a:"Rebecca Guay"'),
             r'\bartist:': ("Artist filter", "artist:name"),
             r'\byear[:<>=]': ("Year filter", "year:2023"),

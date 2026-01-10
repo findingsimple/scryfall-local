@@ -111,15 +111,50 @@ set:m19 r:mythic
 o:"enters the battlefield"
 ```
 
+### Format Legality
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `f:format` | Cards legal in format | `f:standard`, `f:modern` |
+| `format:format` | Alias for f: | `format:legacy` |
+| `legal:format` | Alias for f: | `legal:vintage` |
+
+**Format Codes:**
+- `standard`, `pioneer`, `modern`, `legacy`, `vintage`
+- `commander`, `pauper`, `historic`, `alchemy`
+- `brawl`, `penny`, `duel`, `oldschool`, `premodern`
+
+### Power/Toughness
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `pow:N` | Exact power | `pow:3` |
+| `pow>=N` | Power >= N | `pow>=4` |
+| `pow<N` | Power < N | `pow<2` |
+| `pow:*` | Variable power | `pow:*` |
+| `power:N` | Alias for pow: | `power:5` |
+| `tou:N` | Exact toughness | `tou:4` |
+| `tou>=N` | Toughness >= N | `tou>=5` |
+| `tou<N` | Toughness < N | `tou<3` |
+| `toughness:N` | Alias for tou: | `toughness:7` |
+
+### Price
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `usd<N` | USD price < N | `usd<1` |
+| `usd>=N` | USD price >= N | `usd>=10` |
+| `eur<N` | EUR price < N | `eur<5` |
+| `tix<N` | MTGO TIX < N | `tix<1` |
+
+**Note:** Price filters only match cards with available price data.
+
 ## Planned (Not Yet Supported)
 
 The following syntax is documented for future implementation:
 
 | Feature | Syntax | Status |
 |---------|--------|--------|
-| Format legality | `f:standard`, `f:modern` | Planned |
-| Power/Toughness | `pow:3`, `tou>=4` | Planned |
-| Prices | `usd<1`, `usd>=10` | Planned |
 | Artist | `a:"Rebecca Guay"` | Planned |
 | Year | `year:2023` | Planned |
 | Mana symbols | `m:{2}{U}{U}` | Planned |
