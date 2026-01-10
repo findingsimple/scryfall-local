@@ -18,7 +18,10 @@
       "Bash(python:*)",
       "Bash(timeout 5 python:*)",
       "Bash(claude mcp add:*)",
-      "Bash(claude mcp list:*)"
+      "Bash(claude mcp list:*)",
+      "mcp__scryfall-local__search_cards",
+      "Bash(jq:*)",
+      "mcp__scryfall-local__get_card"
     ]
   }
 }
