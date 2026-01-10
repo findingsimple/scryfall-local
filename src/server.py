@@ -5,6 +5,7 @@ Scryfall bulk data. Uses the low-level MCP Server class for educational purposes
 """
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +52,8 @@ class ScryfallServer:
         self._store: CardStore | None = None
         self._parser = QueryParser()
         self._data_manager = DataManager(data_dir)
+        self._refresh_task: asyncio.Task | None = None
+        self._refresh_status: str = "idle"
 
     def _get_store(self) -> CardStore:
         """Get or create card store."""
@@ -337,17 +340,63 @@ class ScryfallServer:
         """Get data cache status.
 
         Returns:
-            {"last_updated": str, "card_count": int, "stale": bool}
+            {"last_updated": str, "card_count": int, "stale": bool, "refresh_status": str}
         """
         store = self._get_store()
         status = await self._data_manager.get_status()
 
-        return {
+        result = {
             "last_updated": status.last_updated.isoformat() if status.last_updated else None,
             "card_count": store.get_card_count(),
             "version": status.version,
             "stale": status.is_stale,
         }
+
+        # Include refresh status if not idle
+        if self._refresh_status != "idle":
+            result["refresh_status"] = self._refresh_status
+
+        return result
+
+    async def _do_refresh(self) -> None:
+        """Perform the actual download and import (runs in background)."""
+        try:
+            self._refresh_status = "downloading"
+
+            # Download bulk data
+            file_path = await self._data_manager.download_bulk_data("all_cards")
+
+            self._refresh_status = "importing"
+
+            # Close existing store connection before reimporting
+            if self._store is not None:
+                self._store.close()
+                self._store = None
+
+            # Remove old database
+            if self.db_path.exists():
+                self.db_path.unlink()
+
+            # Load JSON and import
+            with open(file_path) as f:
+                cards = json.load(f)
+
+            store = self._get_store()
+            batch_size = 1000
+            for i in range(0, len(cards), batch_size):
+                batch = cards[i : i + batch_size]
+                store.insert_cards(batch)
+
+            # Update metadata with card count
+            self._data_manager.update_card_count(len(cards))
+
+            self._refresh_status = "completed"
+
+        except Exception as e:
+            self._refresh_status = f"error: {str(e)}"
+
+        finally:
+            self._refresh_task = None
 
     async def _refresh_data(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Refresh data cache.
@@ -356,6 +405,31 @@ class ScryfallServer:
             {"status": str, "message": str}
         """
         try:
+            # Check if already refreshing
+            if self._refresh_task is not None and not self._refresh_task.done():
+                return {
+                    "status": "in_progress",
+                    "message": f"Data refresh already in progress: {self._refresh_status}",
+                }
+
+            # Check if refresh completed recently
+            if self._refresh_status == "completed":
+                self._refresh_status = "idle"
+                return {
+                    "status": "completed",
+                    "message": "Data refresh completed successfully",
+                }
+
+            # Check if last refresh had an error
+            if self._refresh_status.startswith("error:"):
+                error_msg = self._refresh_status
+                self._refresh_status = "idle"
+                return {
+                    "status": "error",
+                    "message": error_msg,
+                }
+
+            # Check if update is needed
             is_stale = await self._data_manager.is_cache_stale()
 
             if not is_stale:
@@ -364,10 +438,12 @@ class ScryfallServer:
                     "message": "Data is already up to date",
                 }
 
-            # Download new data
+            # Start download in background
+            self._refresh_task = asyncio.create_task(self._do_refresh())
+
             return {
                 "status": "downloading",
-                "message": "Data refresh initiated. This may take several minutes for the full dataset.",
+                "message": "Data refresh started. This may take several minutes for the full dataset (~2.5 GB download). Use data_status to check progress.",
             }
 
         except Exception as e:
