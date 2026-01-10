@@ -126,20 +126,25 @@ class CardStore:
         cursor.execute("SELECT COUNT(*) FROM cards")
         return cursor.fetchone()[0]
 
-    def insert_card(self, card: dict[str, Any]) -> None:
-        """Insert a single card into the database.
+    # SQL for inserting cards
+    _INSERT_SQL = """
+        INSERT OR REPLACE INTO cards (
+            id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
+            power, toughness, colors, color_identity, set_code, set_name,
+            rarity, image_uris, legalities, prices, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+
+    def _card_to_params(self, card: dict[str, Any]) -> tuple:
+        """Extract card data as SQL parameters.
 
         Args:
             card: Card data dictionary
+
+        Returns:
+            Tuple of parameters for SQL insert
         """
-        cursor = self._conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO cards (
-                id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
-                power, toughness, colors, color_identity, set_code, set_name,
-                rarity, image_uris, legalities, prices, raw_data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        return (
             card.get("id"),
             card.get("oracle_id"),
             card.get("name"),
@@ -158,7 +163,16 @@ class CardStore:
             json.dumps(card.get("legalities", {})),
             json.dumps(card.get("prices", {})),
             json.dumps(card),
-        ))
+        )
+
+    def insert_card(self, card: dict[str, Any]) -> None:
+        """Insert a single card into the database.
+
+        Args:
+            card: Card data dictionary
+        """
+        cursor = self._conn.cursor()
+        cursor.execute(self._INSERT_SQL, self._card_to_params(card))
         self._conn.commit()
 
     def insert_cards(self, cards: list[dict[str, Any]]) -> None:
@@ -169,32 +183,7 @@ class CardStore:
         """
         cursor = self._conn.cursor()
         for card in cards:
-            cursor.execute("""
-                INSERT OR REPLACE INTO cards (
-                    id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
-                    power, toughness, colors, color_identity, set_code, set_name,
-                    rarity, image_uris, legalities, prices, raw_data
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                card.get("id"),
-                card.get("oracle_id"),
-                card.get("name"),
-                card.get("mana_cost"),
-                card.get("cmc"),
-                card.get("type_line"),
-                card.get("oracle_text"),
-                card.get("power"),
-                card.get("toughness"),
-                json.dumps(card.get("colors", [])),
-                json.dumps(card.get("color_identity", [])),
-                card.get("set"),
-                card.get("set_name"),
-                card.get("rarity"),
-                json.dumps(card.get("image_uris", {})),
-                json.dumps(card.get("legalities", {})),
-                json.dumps(card.get("prices", {})),
-                json.dumps(card),
-            ))
+            cursor.execute(self._INSERT_SQL, self._card_to_params(card))
         self._conn.commit()
 
     def _row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -305,18 +294,23 @@ class CardStore:
             )
         elif operator == "<=":
             # Card has at most these colors (subset)
-            # Build condition for each color in the card
-            color_set = set(colors)
-            results = []
-            cursor.execute("SELECT * FROM cards LIMIT ?", (limit * 10,))
-            for row in cursor.fetchall():
-                card = self._row_to_dict(row)
-                card_colors = set(card.get("colors", []))
-                if card_colors.issubset(color_set):
-                    results.append(card)
-                    if len(results) >= limit:
-                        break
-            return results
+            # Exclude cards containing colors not in the allowed set
+            all_colors = {"W", "U", "B", "R", "G"}
+            allowed_colors = set(colors)
+            disallowed_colors = all_colors - allowed_colors
+
+            if disallowed_colors:
+                # Build NOT LIKE conditions for disallowed colors
+                conditions = " AND ".join(
+                    f"colors NOT LIKE '%\"{c}\"%'" for c in disallowed_colors
+                )
+                cursor.execute(
+                    f"SELECT * FROM cards WHERE {conditions} LIMIT ?",
+                    (limit,),
+                )
+            else:
+                # All colors allowed, return any cards
+                cursor.execute("SELECT * FROM cards LIMIT ?", (limit,))
         else:
             cursor.execute("SELECT * FROM cards LIMIT ?", (limit,))
 
