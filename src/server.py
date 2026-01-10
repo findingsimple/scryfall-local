@@ -489,7 +489,7 @@ def create_server(data_dir: Path) -> Server:
         return [
             types.TextContent(
                 type="text",
-                text=str(result) if not isinstance(result, dict) else str(result),
+                text=json.dumps(result, default=str),
             )
         ]
 

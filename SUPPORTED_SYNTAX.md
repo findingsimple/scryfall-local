@@ -170,11 +170,28 @@ o:"enters the battlefield"
 
 The following syntax is documented for future implementation:
 
-| Feature | Syntax | Status |
-|---------|--------|--------|
-| Artist | `a:"Rebecca Guay"` | Planned |
-| Year | `year:2023` | Planned |
-| Mana symbols | `m:{2}{U}{U}` | Planned |
+### High Value
+
+| Feature | Syntax | Description |
+|---------|--------|-------------|
+| Keyword abilities | `kw:flying`, `kw:deathtouch` | Filter by keyword ability |
+| Loyalty | `loy:3`, `loy>=4` | Planeswalker starting loyalty |
+| Flavor text | `ft:"text"` | Search flavor text |
+| Collector number | `cn:123` | Find specific printings |
+| Exact name match | `!"Lightning Bolt"` | Stricter than quoted name |
+| Artist | `a:"Rebecca Guay"` | Search by illustrator |
+| Year | `year:2023` | Release year |
+| Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |
+
+### Medium Value
+
+| Feature | Syntax | Description |
+|---------|--------|-------------|
+| Full oracle text | `fo:"reminder"` | Includes reminder text |
+| Produces mana | `produces:g` | Cards that produce specific mana |
+| Block | `b:innistrad` | Set block filtering |
+| Banned in format | `banned:modern` | Cards banned in format |
+| Watermark | `wm:phyrexian` | Faction/guild watermarks |
 
 When using unsupported syntax, the server returns a helpful error message with suggestions for supported alternatives.
 

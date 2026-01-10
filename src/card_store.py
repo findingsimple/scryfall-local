@@ -5,11 +5,14 @@ All queries use parameterized statements for SQL injection prevention.
 """
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from src.query_parser import ParsedQuery
+
+logger = logging.getLogger(__name__)
 
 
 class CardStore:
@@ -273,18 +276,9 @@ class CardStore:
                 "SELECT * FROM cards WHERE colors = '[]' LIMIT ?",
                 (limit,),
             )
-        elif operator in (":", "="):
-            # Exact color match
+        elif operator in (":", "=", ">="):
+            # Exact color match or "at least these colors"
             # Check that card has all specified colors
-            conditions = " AND ".join(
-                f"colors LIKE '%\"{c}\"%'" for c in colors
-            )
-            cursor.execute(
-                f"SELECT * FROM cards WHERE {conditions} LIMIT ?",
-                (limit,),
-            )
-        elif operator == ">=":
-            # Card has at least these colors
             conditions = " AND ".join(
                 f"colors LIKE '%\"{c}\"%'" for c in colors
             )
@@ -394,8 +388,8 @@ class CardStore:
             results = [self._row_to_dict(row) for row in cursor.fetchall()]
             if results:
                 return results
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.debug("FTS5 search failed, falling back to LIKE: %s", e)
 
         # Fallback to LIKE search
         cursor.execute(

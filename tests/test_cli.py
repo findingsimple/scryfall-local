@@ -252,8 +252,9 @@ class TestMain:
                     main()
                     mock_run.assert_called_once()
                     # Verify it was called with show_status coroutine
-                    call_args = mock_run.call_args[0][0]
-                    assert call_args.__name__ == "show_status" or "show_status" in str(call_args)
+                    coro = mock_run.call_args[0][0]
+                    assert coro.__name__ == "show_status" or "show_status" in str(coro)
+                    coro.close()  # Close to prevent unawaited coroutine warning
 
     def test_main_import_command(self):
         """Should call import_data for import command."""
@@ -262,6 +263,7 @@ class TestMain:
                 with patch("src.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
+                    mock_run.call_args[0][0].close()  # Close unawaited coroutine
 
     def test_main_download_command(self):
         """Should call download_data for download command."""
@@ -270,6 +272,7 @@ class TestMain:
                 with patch("src.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
+                    mock_run.call_args[0][0].close()  # Close unawaited coroutine
 
     def test_main_creates_data_dir(self):
         """Should create data directory if it doesn't exist."""
@@ -278,8 +281,9 @@ class TestMain:
             assert not new_dir.exists()
 
             with patch("sys.argv", ["cli", "--data-dir", str(new_dir), "status"]):
-                with patch("src.cli.asyncio.run"):
+                with patch("src.cli.asyncio.run") as mock_run:
                     main()
+                    mock_run.call_args[0][0].close()  # Close unawaited coroutine
 
             assert new_dir.exists()
 
@@ -290,6 +294,7 @@ class TestMain:
                 with patch("src.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
+                    mock_run.call_args[0][0].close()  # Close unawaited coroutine
 
     def test_main_import_with_file(self):
         """Should pass file argument to import_data."""
@@ -301,3 +306,4 @@ class TestMain:
                 with patch("src.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
+                    mock_run.call_args[0][0].close()  # Close unawaited coroutine
