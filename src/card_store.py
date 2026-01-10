@@ -33,6 +33,24 @@ class CardStore:
         """Create database tables and indexes."""
         cursor = self._conn.cursor()
 
+        # Migration: Add keywords column if table exists but column doesn't
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='cards'
+        """)
+        if cursor.fetchone():
+            cursor.execute("PRAGMA table_info(cards)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "keywords" not in columns:
+                cursor.execute("ALTER TABLE cards ADD COLUMN keywords TEXT")
+                # Populate from raw_data for existing cards
+                cursor.execute("""
+                    UPDATE cards
+                    SET keywords = json_extract(raw_data, '$.keywords')
+                    WHERE keywords IS NULL
+                """)
+                self._conn.commit()
+
         # Main cards table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cards (
@@ -47,6 +65,7 @@ class CardStore:
                 toughness TEXT,
                 colors TEXT,  -- JSON array
                 color_identity TEXT,  -- JSON array
+                keywords TEXT,  -- JSON array of keyword abilities
                 set_code TEXT,
                 set_name TEXT,
                 rarity TEXT,
@@ -133,9 +152,9 @@ class CardStore:
     _INSERT_SQL = """
         INSERT OR REPLACE INTO cards (
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
-            power, toughness, colors, color_identity, set_code, set_name,
+            power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
@@ -159,6 +178,7 @@ class CardStore:
             card.get("toughness"),
             json.dumps(card.get("colors", [])),
             json.dumps(card.get("color_identity", [])),
+            json.dumps(card.get("keywords", [])),
             card.get("set"),
             card.get("set_name"),
             card.get("rarity"),
@@ -193,7 +213,7 @@ class CardStore:
         """Convert database row to card dictionary."""
         card = dict(row)
         # Parse JSON fields
-        for field in ["colors", "color_identity", "image_uris", "legalities", "prices"]:
+        for field in ["colors", "color_identity", "keywords", "image_uris", "legalities", "prices"]:
             if card.get(field):
                 try:
                     card[field] = json.loads(card[field])
@@ -518,15 +538,27 @@ class CardStore:
             conditions.append(f"cmc {sql_op} ?")
             params.append(value)
 
-        # Type filter
+        # Type filter (can be single value or list for multiple type requirements)
         if "type" in filters:
-            conditions.append("LOWER(type_line) LIKE ?")
-            params.append(f"%{filters['type'].lower()}%")
+            type_values = filters["type"]
+            if isinstance(type_values, list):
+                for type_val in type_values:
+                    conditions.append("LOWER(type_line) LIKE ?")
+                    params.append(f"%{type_val.lower()}%")
+            else:
+                conditions.append("LOWER(type_line) LIKE ?")
+                params.append(f"%{type_values.lower()}%")
 
-        # Oracle text filter
+        # Oracle text filter (can be single value or list for multiple text requirements)
         if "oracle_text" in filters:
-            conditions.append("LOWER(oracle_text) LIKE ?")
-            params.append(f"%{filters['oracle_text'].lower()}%")
+            oracle_values = filters["oracle_text"]
+            if isinstance(oracle_values, list):
+                for oracle_val in oracle_values:
+                    conditions.append("LOWER(oracle_text) LIKE ?")
+                    params.append(f"%{oracle_val.lower()}%")
+            else:
+                conditions.append("LOWER(oracle_text) LIKE ?")
+                params.append(f"%{oracle_values.lower()}%")
 
         # Set filter
         if "set" in filters:
@@ -592,6 +624,30 @@ class CardStore:
                 f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
             )
             params.append(value)
+
+        # Keyword filter (can be single value or list for multiple keyword requirements)
+        if "keyword" in filters:
+            keyword_values = filters["keyword"]
+            # keywords is stored as JSON array like ["Flying", "Vigilance"]
+            # Use case-insensitive LIKE matching
+            if isinstance(keyword_values, list):
+                for keyword in keyword_values:
+                    conditions.append("LOWER(keywords) LIKE ?")
+                    params.append(f'%"{keyword.lower()}"%')
+            else:
+                conditions.append("LOWER(keywords) LIKE ?")
+                params.append(f'%"{keyword_values.lower()}"%')
+
+        # Keyword NOT filter (negation) - can be single value or list
+        if "keyword_not" in filters:
+            keyword_not_values = filters["keyword_not"]
+            if isinstance(keyword_not_values, list):
+                for keyword in keyword_not_values:
+                    conditions.append("(keywords IS NULL OR LOWER(keywords) NOT LIKE ?)")
+                    params.append(f'%"{keyword.lower()}"%')
+            else:
+                conditions.append("(keywords IS NULL OR LOWER(keywords) NOT LIKE ?)")
+                params.append(f'%"{keyword_not_values.lower()}"%')
 
         # Build and execute query
         if conditions:

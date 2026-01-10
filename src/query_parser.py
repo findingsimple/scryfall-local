@@ -18,6 +18,7 @@ SUPPORTED_SYNTAX = [
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
     "type: t:creature, t:\"legendary creature\"",
     "oracle text: o:flying, o:\"enters the battlefield\"",
+    "keyword ability: kw:flying, keyword:deathtouch, keywords:vigilance",
     "set: set:neo, e:m19, s:cmd",
     "rarity: r:mythic, r:rare, r:uncommon, r:common",
     "format: f:standard, f:modern, f:legacy, f:vintage, f:commander",
@@ -189,6 +190,8 @@ TOKEN_PATTERNS = [
     (r'(?:set|e|s|edition):([a-zA-Z0-9]+)', 'SET'),
     (r'(?:r|rarity):([a-zA-Z]+)', 'RARITY'),
     (r'(?:f|format|legal|legality):([a-zA-Z]+)', 'FORMAT'),
+    (r'(?:kw|keyword|keywords):"([^"]+)"', 'KEYWORD_QUOTED'),
+    (r'(?:kw|keyword|keywords):([a-zA-Z]+)', 'KEYWORD'),
     (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
     (r'(?:tou|toughness)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'TOUGHNESS'),
     (r'(?:usd|eur|tix)(>=|<=|>|<|=|!=|:)(\d+(?:\.\d+)?)', 'PRICE'),
@@ -278,9 +281,9 @@ class QueryParser:
                         operator = match.group(1)
                         value = float(match.group(2))
                         tokens.append((token_type, (currency, operator, value)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED'):
+                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT'):
+                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type == 'EXACT_NAME':
                         tokens.append((token_type, match.group(1)))
@@ -364,7 +367,17 @@ class QueryParser:
             filter_value = self._get_filter_value(token_type, value)
 
             if filter_key and filter_value is not None:
-                filters[filter_key] = filter_value
+                # Handle multiple values for same filter type (e.g., keyword:flying keyword:trample)
+                # These filter types can have multiple values that should be ANDed together
+                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not'}
+
+                if filter_key in multi_value_filters:
+                    if filter_key not in filters:
+                        filters[filter_key] = [filter_value]
+                    else:
+                        filters[filter_key].append(filter_value)
+                else:
+                    filters[filter_key] = filter_value
                 current_group.append({filter_key: filter_value})
 
             negated = False
@@ -393,6 +406,7 @@ class QueryParser:
             'SET': 'set',
             'RARITY': 'rarity',
             'FORMAT': 'format',
+            'KEYWORD': 'keyword',
             'POWER': 'power',
             'TOUGHNESS': 'toughness',
             'PRICE': 'price',
@@ -445,6 +459,10 @@ class QueryParser:
 
         if token_type == 'SET':
             return value.lower()
+
+        if token_type == 'KEYWORD':
+            # Normalize to title case to match Scryfall format ("Flying", "Deathtouch")
+            return value.title()
 
         if token_type in ('TYPE', 'ORACLE', 'EXACT_NAME', 'PARTIAL_NAME'):
             return value

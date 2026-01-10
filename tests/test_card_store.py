@@ -330,7 +330,7 @@ class TestCardStoreComplexQueries:
             parsed = ParsedQuery(
                 filters={
                     "colors": {"operator": ":", "value": ["U"]},
-                    "type": "instant",
+                    "type": ["instant"],
                 },
                 raw_query="c:blue t:instant",
             )
@@ -353,6 +353,139 @@ class TestCardStoreComplexQueries:
                 limit=2,
             )
             assert len(results) <= 2
+
+            store.close()
+
+
+class TestCardStoreQueryByKeyword:
+    """Test keyword ability queries."""
+
+    def test_query_by_keyword(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Should find cards with specific keyword."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            parsed = ParsedQuery(
+                filters={"keyword": ["Flying"]},
+                raw_query="kw:flying",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) >= 1
+            for card in results:
+                assert "Flying" in card.get("keywords", [])
+
+            store.close()
+
+    def test_query_by_keyword_case_insensitive(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Keyword search should be case insensitive."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            # Using uppercase in filter value
+            parsed = ParsedQuery(
+                filters={"keyword": ["FLYING"]},
+                raw_query="kw:FLYING",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) >= 1
+
+            store.close()
+
+    def test_query_by_keyword_not(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Should exclude cards with keyword (negation)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            parsed = ParsedQuery(
+                filters={"keyword_not": ["Flying"]},
+                raw_query="-kw:flying",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                keywords = card.get("keywords", [])
+                assert "Flying" not in keywords
+
+            store.close()
+
+    def test_query_by_keyword_combined_with_type(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Should combine keyword with type filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            parsed = ParsedQuery(
+                filters={
+                    "type": ["creature"],
+                    "keyword": ["Flying"],
+                },
+                raw_query="t:creature kw:flying",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert "Creature" in card["type_line"]
+                assert "Flying" in card.get("keywords", [])
+
+            store.close()
+
+    def test_query_cards_without_keywords(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Cards with empty keywords array should not match keyword filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            # Find cards with deathtouch
+            parsed = ParsedQuery(
+                filters={"keyword": ["Deathtouch"]},
+                raw_query="kw:deathtouch",
+            )
+            results = store.execute_query(parsed)
+
+            # Only the deathtouch creature should match
+            assert len(results) == 1
+            assert results[0]["name"] == "Deathtouch Test Creature"
+
+            store.close()
+
+    def test_query_by_multiple_keywords(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Should find cards with ALL specified keywords (AND)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            # Find cards with both flying AND vigilance
+            parsed = ParsedQuery(
+                filters={"keyword": ["Flying", "Vigilance"]},
+                raw_query="kw:flying kw:vigilance",
+            )
+            results = store.execute_query(parsed)
+
+            # Only Multi-Keyword Angel has both
+            assert len(results) == 1
+            assert results[0]["name"] == "Multi-Keyword Angel"
+            assert "Flying" in results[0].get("keywords", [])
+            assert "Vigilance" in results[0].get("keywords", [])
+
+            store.close()
+
+    def test_keyword_stored_and_retrieved(self, sample_cards_with_keywords: list[dict[str, Any]]):
+        """Keywords should be stored and retrieved as list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards_with_keywords)
+
+            card = store.get_card_by_name("Multi-Keyword Angel")
+            assert card is not None
+            assert isinstance(card.get("keywords"), list)
+            assert "Flying" in card["keywords"]
+            assert "Vigilance" in card["keywords"]
+            assert "Lifelink" in card["keywords"]
 
             store.close()
 

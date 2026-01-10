@@ -126,21 +126,21 @@ class TestQueryParserType:
         parser = QueryParser()
         result = parser.parse("t:creature")
 
-        assert result.filters["type"] == "creature"
+        assert result.filters["type"] == ["creature"]
 
     def test_parse_type_quoted(self):
         """Quoted type: t:"legendary creature"."""
         parser = QueryParser()
         result = parser.parse('t:"legendary creature"')
 
-        assert result.filters["type"] == "legendary creature"
+        assert result.filters["type"] == ["legendary creature"]
 
     def test_parse_type_alias(self):
         """Type alias: type:instant."""
         parser = QueryParser()
         result = parser.parse("type:instant")
 
-        assert result.filters["type"] == "instant"
+        assert result.filters["type"] == ["instant"]
 
 
 class TestQueryParserOracleText:
@@ -151,21 +151,21 @@ class TestQueryParserOracleText:
         parser = QueryParser()
         result = parser.parse("o:flying")
 
-        assert result.filters["oracle_text"] == "flying"
+        assert result.filters["oracle_text"] == ["flying"]
 
     def test_parse_oracle_quoted(self):
         """Quoted oracle text: o:"enters the battlefield"."""
         parser = QueryParser()
         result = parser.parse('o:"enters the battlefield"')
 
-        assert result.filters["oracle_text"] == "enters the battlefield"
+        assert result.filters["oracle_text"] == ["enters the battlefield"]
 
     def test_parse_oracle_alias(self):
         """Oracle alias: oracle:draw."""
         parser = QueryParser()
         result = parser.parse("oracle:draw")
 
-        assert result.filters["oracle_text"] == "draw"
+        assert result.filters["oracle_text"] == ["draw"]
 
 
 class TestQueryParserSet:
@@ -252,7 +252,7 @@ class TestQueryParserBooleanOperators:
         parser = QueryParser()
         result = parser.parse("-t:creature")
 
-        assert result.filters["type_not"] == "creature"
+        assert result.filters["type_not"] == ["creature"]
 
     def test_parse_complex_boolean(self):
         """Complex: c:blue t:instant -cmc:0."""
@@ -260,7 +260,7 @@ class TestQueryParserBooleanOperators:
         result = parser.parse("c:blue t:instant -cmc:0")
 
         assert "colors" in result.filters
-        assert "type" in result.filters
+        assert result.filters["type"] == ["instant"]
         assert result.filters.get("cmc_not") == {"operator": "=", "value": 0}
 
     def test_parse_parentheses(self):
@@ -458,6 +458,83 @@ class TestQueryParserPrice:
         assert result.filters["price"] == {"currency": "tix", "operator": "<", "value": 1.0}
 
 
+class TestQueryParserKeyword:
+    """Test keyword ability queries."""
+
+    def test_parse_keyword_simple(self):
+        """Keyword filter: kw:flying."""
+        parser = QueryParser()
+        result = parser.parse("kw:flying")
+
+        assert result.filters["keyword"] == ["Flying"]
+
+    def test_parse_keyword_title_case_normalization(self):
+        """Keyword should normalize to title case."""
+        parser = QueryParser()
+        result = parser.parse("kw:DEATHTOUCH")
+
+        assert result.filters["keyword"] == ["Deathtouch"]
+
+    def test_parse_keyword_alias_keyword(self):
+        """Keyword alias: keyword:vigilance."""
+        parser = QueryParser()
+        result = parser.parse("keyword:vigilance")
+
+        assert result.filters["keyword"] == ["Vigilance"]
+
+    def test_parse_keyword_alias_keywords(self):
+        """Keyword alias: keywords:trample."""
+        parser = QueryParser()
+        result = parser.parse("keywords:trample")
+
+        assert result.filters["keyword"] == ["Trample"]
+
+    def test_parse_keyword_quoted(self):
+        """Quoted keyword for multi-word: kw:"first strike"."""
+        parser = QueryParser()
+        result = parser.parse('kw:"first strike"')
+
+        assert result.filters["keyword"] == ["First Strike"]
+
+    def test_parse_keyword_negation(self):
+        """Negated keyword: -kw:flying."""
+        parser = QueryParser()
+        result = parser.parse("-kw:flying")
+
+        assert result.filters["keyword_not"] == ["Flying"]
+
+    def test_parse_keyword_combined_with_type(self):
+        """Keyword combined with type: t:creature kw:flying."""
+        parser = QueryParser()
+        result = parser.parse("t:creature kw:flying")
+
+        assert result.filters["type"] == ["creature"]
+        assert result.filters["keyword"] == ["Flying"]
+
+    def test_parse_keyword_combined_with_color(self):
+        """Keyword combined with color: c:white kw:vigilance."""
+        parser = QueryParser()
+        result = parser.parse("c:white kw:vigilance")
+
+        assert result.filters["colors"]["value"] == ["W"]
+        assert result.filters["keyword"] == ["Vigilance"]
+
+    def test_parse_multiple_keywords(self):
+        """Multiple keywords: kw:flying kw:vigilance (AND)."""
+        parser = QueryParser()
+        result = parser.parse("kw:flying kw:vigilance")
+
+        assert result.filters["keyword"] == ["Flying", "Vigilance"]
+
+    def test_parse_multiple_keywords_with_negation(self):
+        """Multiple keywords with negation: kw:flying -kw:trample."""
+        parser = QueryParser()
+        result = parser.parse("kw:flying -kw:trample")
+
+        assert result.filters["keyword"] == ["Flying"]
+        assert result.filters["keyword_not"] == ["Trample"]
+
+
 class TestQueryParserErrorHandling:
     """Test error handling and helpful messages."""
 
@@ -501,8 +578,8 @@ class TestQueryParserComplexQueries:
         parser = QueryParser()
         result = parser.parse("t:dragon o:flying")
 
-        assert result.filters["type"] == "dragon"
-        assert result.filters["oracle_text"] == "flying"
+        assert result.filters["type"] == ["dragon"]
+        assert result.filters["oracle_text"] == ["flying"]
 
     def test_blue_instant_low_cmc(self):
         """Blue instants CMC 2 or less: c:blue t:instant cmc<=2."""
@@ -510,7 +587,7 @@ class TestQueryParserComplexQueries:
         result = parser.parse("c:blue t:instant cmc<=2")
 
         assert result.filters["colors"]["value"] == ["U"]
-        assert result.filters["type"] == "instant"
+        assert result.filters["type"] == ["instant"]
         assert result.filters["cmc"]["operator"] == "<="
         assert result.filters["cmc"]["value"] == 2
 
@@ -521,7 +598,7 @@ class TestQueryParserComplexQueries:
 
         assert set(result.filters["colors"]["value"]) == {"U", "R"}
         assert result.filters["colors"]["operator"] == ">="
-        assert result.filters["type"] == "legendary creature"
+        assert result.filters["type"] == ["legendary creature"]
 
     def test_mythic_from_set(self):
         """Mythics from specific set: set:m19 r:mythic."""

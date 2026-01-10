@@ -75,6 +75,24 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 | `oracle:word` | Alias for o: | `oracle:flying` |
 | `text:word` | Alias for o: | `text:counter` |
 
+### Keyword Abilities
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `kw:keyword` | Cards with keyword ability | `kw:flying`, `kw:deathtouch` |
+| `kw:"multi word"` | Multi-word keywords | `kw:"first strike"` |
+| `keyword:keyword` | Alias for kw: | `keyword:trample` |
+| `keywords:keyword` | Alias for kw: | `keywords:vigilance` |
+| `-kw:keyword` | Cards without keyword | `-kw:flying` |
+
+**Note:** Keyword filters match the official Scryfall `keywords` field, which is more precise than searching oracle text. A card with "flying" in reminder text won't match `kw:flying` unless it actually has the Flying keyword.
+
+**Common Keywords:**
+- Combat: Flying, First Strike, Double Strike, Trample, Vigilance, Deathtouch, Lifelink, Haste, Menace, Reach
+- Protection: Hexproof, Indestructible, Shroud, Ward
+- Triggered: Landfall, Constellation, Magecraft
+- Static: Defender, Flash, Prowess
+
 ### Set
 
 | Syntax | Description | Example |
@@ -174,7 +192,6 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
-| Keyword abilities | `kw:flying`, `kw:deathtouch` | Filter by keyword ability |
 | Loyalty | `loy:3`, `loy>=4` | Planeswalker starting loyalty |
 | Flavor text | `ft:"text"` | Search flavor text |
 | Collector number | `cn:123` | Find specific printings |
