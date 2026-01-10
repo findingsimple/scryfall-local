@@ -26,7 +26,11 @@
       "Bash(find:*)",
       "Bash(wc:*)",
       "Bash(grep:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "mcp__scryfall-local__get_cards_batch",
+      "mcp__scryfall-local__data_status",
+      "Bash(claude mcp restart:*)",
+      "Bash(claude mcp --help:*)"
     ]
   }
 }
