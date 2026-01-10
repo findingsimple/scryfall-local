@@ -103,6 +103,14 @@ class CardStore:
         """Close database connection."""
         self._conn.close()
 
+    def __enter__(self) -> "CardStore":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager and close connection."""
+        self.close()
+
     def get_table_names(self) -> list[str]:
         """Get list of table names in database."""
         cursor = self._conn.cursor()
