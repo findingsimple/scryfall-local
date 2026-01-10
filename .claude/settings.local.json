@@ -10,7 +10,15 @@
       "Bash(source .venv/bin/activate)",
       "Bash(pip install:*)",
       "Bash(pytest:*)",
-      "Bash(python -m src.cli:*)"
+      "Bash(python -m src.cli:*)",
+      "Bash(source:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(VIRTUAL_ENV=/Users/jason/Repos/scryfall-local/.venv python:*)",
+      "Bash(python:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp list:*)"
     ]
   }
 }
