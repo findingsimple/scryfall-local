@@ -21,7 +21,9 @@
       "Bash(claude mcp list:*)",
       "mcp__scryfall-local__search_cards",
       "Bash(jq:*)",
-      "mcp__scryfall-local__get_card"
+      "mcp__scryfall-local__get_card",
+      "Bash(tree:*)",
+      "Bash(find:*)"
     ]
   }
 }
