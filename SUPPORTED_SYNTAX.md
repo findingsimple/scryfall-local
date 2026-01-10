@@ -29,6 +29,23 @@ This document describes the query syntax supported by the Scryfall Local MCP ser
 - `g` or `green` - Green
 - `c` or `colorless` - Colorless
 
+### Color Identity
+
+For Commander deck building - includes colors in mana cost, rules text, and color indicators.
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `id:colors` | Cards with this identity | `id:rg`, `id:wubrg` |
+| `id:name` | Named color combination | `id:esper`, `id:gruul` |
+| `id<=colors` | Identity subset (for Commander) | `id<=rg` (fits in Gruul deck) |
+| `identity:` | Alias for id: | `identity:boros` |
+| `ci:` | Alias for id: | `ci:ub` |
+
+**Named Combinations:**
+- **Guilds:** azorius, dimir, rakdos, gruul, selesnya, orzhov, izzet, golgari, boros, simic
+- **Shards:** bant, esper, grixis, jund, naya
+- **Wedges:** abzan, jeskai, sultai, mardu, temur
+
 ### Mana Value (CMC)
 
 | Syntax | Description | Example |

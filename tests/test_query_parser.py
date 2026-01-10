@@ -273,6 +273,67 @@ class TestQueryParserBooleanOperators:
         assert result.has_or_clause
 
 
+class TestQueryParserColorIdentity:
+    """Test color identity queries."""
+
+    def test_parse_identity_single_color(self):
+        """Color identity filter: id:r."""
+        parser = QueryParser()
+        result = parser.parse("id:r")
+
+        assert result.filters["color_identity"] == {"operator": ":", "value": ["R"]}
+
+    def test_parse_identity_multiple_colors(self):
+        """Color identity filter: id:wubrg."""
+        parser = QueryParser()
+        result = parser.parse("id:wubrg")
+
+        assert result.filters["color_identity"]["value"] == ["W", "U", "B", "R", "G"]
+
+    def test_parse_identity_named_esper(self):
+        """Color identity filter: id:esper (named combination)."""
+        parser = QueryParser()
+        result = parser.parse("id:esper")
+
+        assert set(result.filters["color_identity"]["value"]) == {"W", "U", "B"}
+
+    def test_parse_identity_named_grixis(self):
+        """Color identity filter: identity:grixis."""
+        parser = QueryParser()
+        result = parser.parse("identity:grixis")
+
+        assert set(result.filters["color_identity"]["value"]) == {"U", "B", "R"}
+
+    def test_parse_identity_ci_alias(self):
+        """Color identity filter with ci: alias."""
+        parser = QueryParser()
+        result = parser.parse("ci:rg")
+
+        assert set(result.filters["color_identity"]["value"]) == {"R", "G"}
+
+    def test_parse_identity_colorless(self):
+        """Color identity filter for colorless: id:c."""
+        parser = QueryParser()
+        result = parser.parse("id:colorless")
+
+        assert result.filters["color_identity"]["value"] == []
+
+    def test_parse_identity_subset_operator(self):
+        """Color identity filter with subset operator: id<=rg."""
+        parser = QueryParser()
+        result = parser.parse("id<=rg")
+
+        assert result.filters["color_identity"]["operator"] == "<="
+        assert set(result.filters["color_identity"]["value"]) == {"R", "G"}
+
+    def test_parse_identity_named_guild(self):
+        """Color identity filter with guild name: id:izzet."""
+        parser = QueryParser()
+        result = parser.parse("id:izzet")
+
+        assert set(result.filters["color_identity"]["value"]) == {"U", "R"}
+
+
 class TestQueryParserFormat:
     """Test format legality queries."""
 

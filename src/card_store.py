@@ -485,6 +485,35 @@ class CardStore:
                     conditions.append(f"colors LIKE ?")
                     params.append(f'%"{c}"%')
 
+        # Color identity filter
+        if "color_identity" in filters:
+            identity_filter = filters["color_identity"]
+            colors = identity_filter.get("value", [])
+            operator = identity_filter.get("operator", ":")
+
+            if not colors:
+                # Colorless identity
+                conditions.append("color_identity = '[]'")
+            elif operator in (":", "="):
+                # Exact match - must have all these colors in identity
+                for c in colors:
+                    conditions.append(f"color_identity LIKE ?")
+                    params.append(f'%"{c}"%')
+            elif operator == ">=":
+                # At least these colors
+                for c in colors:
+                    conditions.append(f"color_identity LIKE ?")
+                    params.append(f'%"{c}"%')
+            elif operator == "<=":
+                # At most these colors (subset) - exclude cards with colors not in set
+                all_colors = {"W", "U", "B", "R", "G"}
+                allowed_colors = set(colors)
+                disallowed_colors = all_colors - allowed_colors
+                if disallowed_colors:
+                    for c in disallowed_colors:
+                        conditions.append(f"color_identity NOT LIKE ?")
+                        params.append(f'%"{c}"%')
+
         # CMC filter
         if "cmc" in filters:
             cmc_filter = filters["cmc"]

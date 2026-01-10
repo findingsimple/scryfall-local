@@ -14,6 +14,7 @@ from typing import Any
 SUPPORTED_SYNTAX = [
     'name search: "Lightning Bolt" (exact) or bolt (partial)',
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
+    "color identity: id:wubrg, identity:esper, ci:rg (for Commander)",
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
     "type: t:creature, t:\"legendary creature\"",
     "oracle text: o:flying, o:\"enters the battlefield\"",
@@ -52,6 +53,30 @@ RARITY_MAP = {
     "uncommon": "uncommon",
     "rare": "rare",
     "mythic": "mythic",
+}
+
+# Named color identity combinations (guilds, shards, wedges)
+IDENTITY_MAP = {
+    # Mono colors
+    "white": ["W"], "blue": ["U"], "black": ["B"], "red": ["R"], "green": ["G"],
+    "colorless": [],
+    # Guilds (2 color)
+    "azorius": ["W", "U"], "dimir": ["U", "B"], "rakdos": ["B", "R"],
+    "gruul": ["R", "G"], "selesnya": ["G", "W"], "orzhov": ["W", "B"],
+    "izzet": ["U", "R"], "golgari": ["B", "G"], "boros": ["R", "W"],
+    "simic": ["G", "U"],
+    # Shards (3 color)
+    "bant": ["G", "W", "U"], "esper": ["W", "U", "B"], "grixis": ["U", "B", "R"],
+    "jund": ["B", "R", "G"], "naya": ["R", "G", "W"],
+    # Wedges (3 color)
+    "abzan": ["W", "B", "G"], "jeskai": ["U", "R", "W"], "sultai": ["B", "G", "U"],
+    "mardu": ["R", "W", "B"], "temur": ["G", "U", "R"],
+    # 4 color
+    "chaos": ["U", "B", "R", "G"], "aggression": ["B", "R", "G", "W"],
+    "altruism": ["R", "G", "W", "U"], "growth": ["G", "W", "U", "B"],
+    "artifice": ["W", "U", "B", "R"],
+    # 5 color
+    "wubrg": ["W", "U", "B", "R", "G"], "fivecolor": ["W", "U", "B", "R", "G"],
 }
 
 
@@ -126,10 +151,36 @@ def _parse_color_value(value: str) -> list[str]:
     return colors
 
 
+def _parse_identity_value(value: str) -> list[str]:
+    """Parse color identity value into list of color symbols.
+
+    Supports named combinations like 'esper', 'grixis', etc.
+    """
+    value = value.lower()
+
+    # Check for named combinations first
+    if value in IDENTITY_MAP:
+        return IDENTITY_MAP[value]
+
+    # Handle colorless
+    if value in ("c", "colorless"):
+        return []
+
+    # Handle color symbols (e.g., "wubrg", "rg")
+    colors = []
+    for char in value:
+        if char.lower() in COLOR_MAP:
+            mapped = COLOR_MAP[char.lower()]
+            if mapped:
+                colors.append(mapped)
+    return colors
+
+
 # Token patterns (order matters - more specific patterns first)
 TOKEN_PATTERNS = [
     # Filter patterns with operators
-    (r'(?:c|color|colors|ci|id)(>=|<=|>|<|=|!=|:)([a-zA-Z]+)', 'COLOR'),
+    (r'(?:id|identity|ci)(>=|<=|>|<|=|!=|:)([a-zA-Z]+)', 'COLOR_IDENTITY'),
+    (r'(?:c|color|colors)(>=|<=|>|<|=|!=|:)([a-zA-Z]+)', 'COLOR'),
     (r'(?:cmc|mv|manavalue)(>=|<=|>|<|=|!=|:)(\d+)', 'CMC'),
     (r'(?:t|type):"([^"]+)"', 'TYPE_QUOTED'),
     (r'(?:t|type):([a-zA-Z]+)', 'TYPE'),
@@ -200,7 +251,7 @@ class QueryParser:
             for pattern, token_type in self._patterns:
                 match = pattern.match(query, pos)
                 if match:
-                    if token_type == 'COLOR':
+                    if token_type in ('COLOR', 'COLOR_IDENTITY'):
                         operator = match.group(1)
                         value = match.group(2)
                         tokens.append((token_type, (operator, value)))
@@ -335,6 +386,7 @@ class QueryParser:
         """Get filter key for token type."""
         key_map = {
             'COLOR': 'colors',
+            'COLOR_IDENTITY': 'color_identity',
             'CMC': 'cmc',
             'TYPE': 'type',
             'ORACLE': 'oracle_text',
@@ -357,6 +409,11 @@ class QueryParser:
         if token_type == 'COLOR':
             operator, color_str = value
             colors = _parse_color_value(color_str)
+            return {"operator": operator, "value": colors}
+
+        if token_type == 'COLOR_IDENTITY':
+            operator, identity_str = value
+            colors = _parse_identity_value(identity_str)
             return {"operator": operator, "value": colors}
 
         if token_type == 'CMC':
