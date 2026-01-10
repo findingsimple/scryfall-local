@@ -60,11 +60,11 @@ class TestDataManagerCatalog:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-            catalog = await manager.fetch_catalog()
+            async with DataManager(Path(tmpdir)) as manager:
+                catalog = await manager.fetch_catalog()
 
-            assert "data" in catalog
-            assert len(catalog["data"]) == 2
+                assert "data" in catalog
+                assert len(catalog["data"]) == 2
 
     @pytest.mark.asyncio
     @respx.mock
@@ -75,12 +75,12 @@ class TestDataManagerCatalog:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-            info = await manager.get_bulk_data_info("all_cards")
+            async with DataManager(Path(tmpdir)) as manager:
+                info = await manager.get_bulk_data_info("all_cards")
 
-            assert info["type"] == "all_cards"
-            assert "download_uri" in info
-            assert "updated_at" in info
+                assert info["type"] == "all_cards"
+                assert "download_uri" in info
+                assert "updated_at" in info
 
 
 class TestDataManagerUrlValidation:
@@ -141,13 +141,13 @@ class TestDataManagerDownload:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-            file_path = await manager.download_bulk_data("all_cards")
+            async with DataManager(Path(tmpdir)) as manager:
+                file_path = await manager.download_bulk_data("all_cards")
 
-            assert file_path.exists()
-            with open(file_path) as f:
-                data = json.load(f)
-            assert len(data) == 2
+                assert file_path.exists()
+                with open(file_path) as f:
+                    data = json.load(f)
+                assert len(data) == 2
 
     @pytest.mark.asyncio
     @respx.mock
@@ -172,11 +172,11 @@ class TestDataManagerDownload:
             progress_calls.append((downloaded, total))
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-            await manager.download_bulk_data("all_cards", progress_callback=progress_callback)
+            async with DataManager(Path(tmpdir)) as manager:
+                await manager.download_bulk_data("all_cards", progress_callback=progress_callback)
 
-            # Progress should have been called
-            assert len(progress_calls) >= 1
+                # Progress should have been called
+                assert len(progress_calls) >= 1
 
 
 class TestDataManagerCache:
@@ -191,8 +191,6 @@ class TestDataManagerCache:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-
             # Create a recent metadata file
             metadata = {
                 "type": "all_cards",
@@ -204,9 +202,10 @@ class TestDataManagerCache:
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f)
 
-            is_stale = await manager.is_cache_stale()
-            # Cache should be fresh if updated_at matches
-            assert not is_stale
+            async with DataManager(Path(tmpdir)) as manager:
+                is_stale = await manager.is_cache_stale()
+                # Cache should be fresh if updated_at matches
+                assert not is_stale
 
     @pytest.mark.asyncio
     @respx.mock
@@ -217,8 +216,6 @@ class TestDataManagerCache:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-
             # Create an old metadata file
             metadata = {
                 "type": "all_cards",
@@ -230,18 +227,18 @@ class TestDataManagerCache:
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f)
 
-            is_stale = await manager.is_cache_stale()
-            # Cache should be stale since server has newer data
-            assert is_stale
+            async with DataManager(Path(tmpdir)) as manager:
+                is_stale = await manager.is_cache_stale()
+                # Cache should be stale since server has newer data
+                assert is_stale
 
     @pytest.mark.asyncio
     async def test_no_cache_is_stale(self):
         """Should report stale if no cache exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-
-            is_stale = await manager.is_cache_stale()
-            assert is_stale
+            async with DataManager(Path(tmpdir)) as manager:
+                is_stale = await manager.is_cache_stale()
+                assert is_stale
 
 
 class TestDataManagerPathSecurity:
@@ -275,20 +272,18 @@ class TestDataManagerStatus:
     async def test_get_status_no_data(self):
         """Should report no data status."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-            status = await manager.get_status()
+            async with DataManager(Path(tmpdir)) as manager:
+                status = await manager.get_status()
 
-            assert isinstance(status, DataStatus)
-            assert status.card_count == 0
-            assert status.last_updated is None
-            assert status.is_stale
+                assert isinstance(status, DataStatus)
+                assert status.card_count == 0
+                assert status.last_updated is None
+                assert status.is_stale
 
     @pytest.mark.asyncio
     async def test_get_status_with_data(self):
         """Should report status with data."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = DataManager(Path(tmpdir))
-
             # Create metadata
             metadata = {
                 "type": "all_cards",
@@ -299,7 +294,8 @@ class TestDataManagerStatus:
             with open(Path(tmpdir) / "metadata.json", "w") as f:
                 json.dump(metadata, f)
 
-            status = await manager.get_status()
+            async with DataManager(Path(tmpdir)) as manager:
+                status = await manager.get_status()
 
-            assert status.card_count == 50000
-            assert status.last_updated is not None
+                assert status.card_count == 50000
+                assert status.last_updated is not None

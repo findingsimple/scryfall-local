@@ -58,6 +58,20 @@ class ScryfallServer:
             self._store = CardStore(self.db_path)
         return self._store
 
+    def close(self) -> None:
+        """Close server resources."""
+        if self._store is not None:
+            self._store.close()
+            self._store = None
+
+    def __enter__(self) -> "ScryfallServer":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager and close resources."""
+        self.close()
+
     def _init_db(self, cards: list[dict[str, Any]]) -> None:
         """Initialize database with cards (for testing).
 

@@ -73,6 +73,14 @@ class DataManager:
         if self._http_client and not self._http_client.is_closed:
             await self._http_client.aclose()
 
+    async def __aenter__(self) -> "DataManager":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager and close HTTP client."""
+        await self.close()
+
     def is_valid_download_url(self, url: str) -> bool:
         """Validate that URL is from allowed Scryfall domains.
 
