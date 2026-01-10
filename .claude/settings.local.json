@@ -23,7 +23,10 @@
       "Bash(jq:*)",
       "mcp__scryfall-local__get_card",
       "Bash(tree:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(done)"
     ]
   }
 }
