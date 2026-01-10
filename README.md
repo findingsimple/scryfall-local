@@ -136,15 +136,20 @@ Trigger a data refresh if updates are available.
 
 See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 
-**Supported:**
+**Supported (13 filter types):**
 - Name: `"Lightning Bolt"` (exact), `bolt` (partial)
 - Colors: `c:blue`, `c:urg`, `c>=rg`, `c<=w`
-- Mana Value: `cmc:3`, `cmc>=5`, `cmc<2`
+- Color Identity: `id:esper`, `ci:rg`, `identity:gruul`
+- Mana Value: `cmc:3`, `cmc>=5`, `mv<2`
 - Type: `t:creature`, `t:"legendary creature"`
 - Oracle Text: `o:flying`, `o:"enters the battlefield"`
 - Set: `set:neo`, `e:m19`
 - Rarity: `r:mythic`, `r:rare`
-- Boolean: implicit AND, `OR`, `-` (negation)
+- Format: `f:standard`, `f:modern`, `legal:commander`
+- Power: `pow:3`, `pow>=4`, `power<2`
+- Toughness: `tou:4`, `tou>=5`, `toughness<3`
+- Price: `usd<1`, `eur>=10`, `tix<5`
+- Boolean: implicit AND, `OR`, `-` (negation), `(` `)` grouping
 
 ## Development
 
