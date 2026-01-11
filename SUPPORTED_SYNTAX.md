@@ -273,12 +273,6 @@ The following syntax is documented for future implementation:
 | Banned in format | `banned:modern` | Cards banned in format |
 | Watermark | `wm:phyrexian` | Faction/guild watermarks |
 
-### Performance Improvements
-
-| Feature | Description |
-|---------|-------------|
-| Optimized filtered random | Filtered random queries still fetch up to 1000 cards; unfiltered already uses `ORDER BY RANDOM()` |
-
 ### Not Planned
 
 The following features are intentionally out of scope for this project:
