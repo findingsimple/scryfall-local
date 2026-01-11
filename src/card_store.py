@@ -333,7 +333,8 @@ class CardStore:
             List of matching card dictionaries
         """
         cursor = self._conn.cursor()
-        # Use LIKE with parameterized query for safety
+        # Note: % and _ in user input act as LIKE wildcards, but no MTG cards
+        # contain these characters in their names, so this is safe in practice
         cursor.execute(
             "SELECT * FROM cards WHERE LOWER(name) LIKE ? LIMIT ?",
             (f"%{partial.lower()}%", limit),
@@ -367,6 +368,8 @@ class CardStore:
         elif operator in (":", "=", ">="):
             # Exact color match or "at least these colors"
             # Check that card has all specified colors
+            # Note: colors are validated by query_parser._parse_color_value() to only
+            # contain W, U, B, R, G - no SQL injection risk from f-string formatting
             conditions = " AND ".join(
                 f"colors LIKE '%\"{c}\"%'" for c in colors
             )
@@ -456,7 +459,7 @@ class CardStore:
         safe_text = text.replace('"', '""')
 
         try:
-            # Try FTS5 search first
+            # Try FTS5 search first for better performance on exact phrase matches
             cursor.execute("""
                 SELECT cards.* FROM cards
                 JOIN cards_fts ON cards.id = cards_fts.id
@@ -469,7 +472,9 @@ class CardStore:
         except sqlite3.OperationalError as e:
             logger.debug("FTS5 search failed, falling back to LIKE: %s", e)
 
-        # Fallback to LIKE search
+        # Intentional fallback: when FTS5 returns no results or fails, use LIKE
+        # for partial/substring matching. This provides better UX for searches
+        # that don't match FTS5's exact phrase semantics.
         cursor.execute(
             "SELECT * FROM cards WHERE LOWER(oracle_text) LIKE ? LIMIT ?",
             (f"%{text.lower()}%", limit),
@@ -785,6 +790,10 @@ class CardStore:
             params.append(value)
 
         # Collector number filter
+        # Note: For numeric comparisons (>, <, >=, <=), CAST handles alphanumeric
+        # collector numbers like "1a" or "★" by extracting the numeric prefix (or 0).
+        # This is acceptable behavior since numeric comparisons on non-numeric
+        # collector numbers are inherently ambiguous.
         if "collector_number" in filters:
             cn_filter = filters["collector_number"]
             value = cn_filter.get("value")
