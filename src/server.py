@@ -55,6 +55,7 @@ class ScryfallServer:
         self._data_manager = DataManager(data_dir)
         self._refresh_task: asyncio.Task | None = None
         self._refresh_status: str = "idle"
+        self._refresh_lock = asyncio.Lock()  # Prevents queries during refresh
 
     def _get_store(self) -> CardStore:
         """Get or create card store."""
@@ -266,9 +267,11 @@ class ScryfallServer:
                 "supported_syntax": e.supported_syntax,
             }
 
-        store = self._get_store()
-        cards = store.execute_query(parsed, limit=limit, offset=offset)
-        total_count = store.count_matches(parsed)
+        # Wait for any ongoing refresh to complete
+        async with self._refresh_lock:
+            store = self._get_store()
+            cards = store.execute_query(parsed, limit=limit, offset=offset)
+            total_count = store.count_matches(parsed)
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -288,19 +291,21 @@ class ScryfallServer:
         Returns:
             Card dictionary or error
         """
-        store = self._get_store()
-
         name = arguments.get("name")
         card_id = arguments.get("id")
 
         if name and card_id:
             return {"error": "Provide either 'name' or 'id', not both"}
-        elif name:
-            card = store.get_card_by_name(name)
-        elif card_id:
-            card = store.get_card_by_id(card_id)
-        else:
+        elif not name and not card_id:
             return {"error": "Either 'name' or 'id' must be provided"}
+
+        # Wait for any ongoing refresh to complete
+        async with self._refresh_lock:
+            store = self._get_store()
+            if name:
+                card = store.get_card_by_name(name)
+            else:
+                card = store.get_card_by_id(card_id)
 
         if card:
             return card
@@ -319,7 +324,6 @@ class ScryfallServer:
         Returns:
             {"found": [...], "not_found": [...], "truncated": bool}
         """
-        store = self._get_store()
         batch_limit = 50
 
         names = arguments.get("names", [])
@@ -332,21 +336,25 @@ class ScryfallServer:
         not_found = []
         remaining = batch_limit
 
-        for name in names[:remaining]:
-            card = store.get_card_by_name(name)
-            if card:
-                found.append(card)
-            else:
-                not_found.append(name)
+        # Wait for any ongoing refresh to complete
+        async with self._refresh_lock:
+            store = self._get_store()
 
-        remaining -= min(len(names), remaining)
+            for name in names[:remaining]:
+                card = store.get_card_by_name(name)
+                if card:
+                    found.append(card)
+                else:
+                    not_found.append(name)
 
-        for card_id in ids[:remaining]:
-            card = store.get_card_by_id(card_id)
-            if card:
-                found.append(card)
-            else:
-                not_found.append(card_id)
+            remaining -= min(len(names), remaining)
+
+            for card_id in ids[:remaining]:
+                card = store.get_card_by_id(card_id)
+                if card:
+                    found.append(card)
+                else:
+                    not_found.append(card_id)
 
         result: dict[str, Any] = {
             "found": found,
@@ -368,7 +376,6 @@ class ScryfallServer:
         Returns:
             Card dictionary
         """
-        store = self._get_store()
         query = arguments.get("query")
 
         parsed = None
@@ -381,7 +388,10 @@ class ScryfallServer:
                     "hint": e.hint,
                 }
 
-        card = store.get_random_card(parsed)
+        # Wait for any ongoing refresh to complete
+        async with self._refresh_lock:
+            store = self._get_store()
+            card = store.get_random_card(parsed)
 
         if card:
             return card
@@ -410,6 +420,46 @@ class ScryfallServer:
 
         return result
 
+    def _import_cards_blocking(self, file_path: Path) -> int:
+        """Import cards from JSON file (blocking I/O, runs in thread).
+
+        Args:
+            file_path: Path to the JSON file
+
+        Returns:
+            Number of cards imported
+        """
+        # Close existing store connection before reimporting
+        if self._store is not None:
+            self._store.close()
+            self._store = None
+
+        # Remove old database
+        if self.db_path.exists():
+            self.db_path.unlink()
+
+        # Load JSON using streaming parser to reduce memory usage
+        store = self._get_store()
+        batch_size = 1000
+        batch: list[dict[str, Any]] = []
+        card_count = 0
+
+        with open(file_path, "rb") as f:
+            # ijson.items streams through the JSON array one item at a time
+            for card in ijson.items(f, "item"):
+                batch.append(card)
+                if len(batch) >= batch_size:
+                    store.insert_cards(batch)
+                    card_count += len(batch)
+                    batch = []
+
+        # Insert remaining cards
+        if batch:
+            store.insert_cards(batch)
+            card_count += len(batch)
+
+        return card_count
+
     async def _do_refresh(self) -> None:
         """Perform the actual download and import (runs in background)."""
         try:
@@ -420,34 +470,12 @@ class ScryfallServer:
 
             self._refresh_status = "importing"
 
-            # Close existing store connection before reimporting
-            if self._store is not None:
-                self._store.close()
-                self._store = None
-
-            # Remove old database
-            if self.db_path.exists():
-                self.db_path.unlink()
-
-            # Load JSON using streaming parser to reduce memory usage
-            store = self._get_store()
-            batch_size = 1000
-            batch: list[dict[str, Any]] = []
-            card_count = 0
-
-            with open(file_path, "rb") as f:
-                # ijson.items streams through the JSON array one item at a time
-                for card in ijson.items(f, "item"):
-                    batch.append(card)
-                    if len(batch) >= batch_size:
-                        store.insert_cards(batch)
-                        card_count += len(batch)
-                        batch = []
-
-            # Insert remaining cards
-            if batch:
-                store.insert_cards(batch)
-                card_count += len(batch)
+            # Acquire lock to prevent queries during database replacement
+            async with self._refresh_lock:
+                # Run blocking I/O in thread pool to avoid blocking event loop
+                card_count = await asyncio.to_thread(
+                    self._import_cards_blocking, file_path
+                )
 
             # Update metadata with card count
             self._data_manager.update_card_count(card_count)

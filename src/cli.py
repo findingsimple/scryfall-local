@@ -132,21 +132,19 @@ async def download_data(
         print("Importing cards into database...")
 
         db_path = data_dir / "cards.db"
-        store = CardStore(db_path)
 
         def import_progress(imported: int, total: int | None) -> None:
             sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
-        total_cards = import_cards_streaming(file_path, store, import_progress)
+        with CardStore(db_path) as store:
+            total_cards = import_cards_streaming(file_path, store, import_progress)
 
         print()
         print(f"Import complete! {total_cards:,} cards imported.")
 
         # Update metadata with card count
         manager.update_card_count(total_cards)
-
-        store.close()
 
         print()
         print("Done! You can now use the MCP server.")
