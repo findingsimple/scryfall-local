@@ -1267,10 +1267,14 @@ class CardStore:
         if "produces_not" in filters:
             produced_colors = filters["produces_not"]
             if isinstance(produced_colors, list):
-                for color in produced_colors:
-                    if color:
-                        conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE ?)")
-                        params.append(f'%"{color}"%')
+                if len(produced_colors) == 0:
+                    # Empty list means colorless (-produces:c) - exclude cards with "C"
+                    conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE '%\"C\"%')")
+                else:
+                    for color in produced_colors:
+                        if color:
+                            conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE ?)")
+                            params.append(f'%"{color}"%')
 
         # Watermark filter (e.g., wm:phyrexian)
         # Design: Uses exact match (=) because watermarks are fixed values from a

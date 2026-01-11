@@ -1216,6 +1216,30 @@ class TestCardStoreNewFilters:
 
             store.close()
 
+    def test_produces_not_colorless(self, sample_cards: list[dict[str, Any]]):
+        """-produces:c should exclude cards that produce colorless mana."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # -produces:c passes produces_not: [] which means NOT colorless
+            parsed = ParsedQuery(
+                filters={"produces_not": []},
+                raw_query="-produces:c",
+            )
+            results = store.execute_query(parsed)
+            names = [c["name"] for c in results]
+
+            # Sol Ring produces colorless, should be excluded
+            assert "Sol Ring" not in names
+            # Cards that produce colored mana should be included
+            assert "Llanowar Elves" in names
+            assert "Dark Ritual" in names
+            # Cards with no produced_mana should be included
+            assert "Lightning Bolt" in names
+
+            store.close()
+
     def test_watermark_filter(self):
         """wm:selesnya should find cards with selesnya watermark."""
         with tempfile.TemporaryDirectory() as tmpdir:
