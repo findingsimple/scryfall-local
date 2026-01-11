@@ -503,57 +503,50 @@ class CardStore:
         )
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
-    def execute_query(
-        self,
-        parsed: ParsedQuery,
-        limit: int = 20,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        """Execute a parsed query.
+    def _build_conditions_for_filters(
+        self, filters: dict[str, Any]
+    ) -> tuple[list[str], list[Any]]:
+        """Convert a filters dict to SQL conditions and params.
 
         Args:
-            parsed: ParsedQuery object with filters
-            limit: Maximum results to return
-            offset: Number of results to skip (for pagination)
+            filters: Dictionary of filter key-value pairs
 
         Returns:
-            List of matching card dictionaries
+            Tuple of (conditions list, params list)
         """
-        # Start with all cards if no filters
-        if parsed.is_empty:
-            cursor = self._conn.cursor()
-            cursor.execute("SELECT * FROM cards LIMIT ? OFFSET ?", (limit, offset))
-            return [self._row_to_dict(row) for row in cursor.fetchall()]
-
-        # Build query conditions
         conditions: list[str] = []
         params: list[Any] = []
-
-        filters = parsed.filters
 
         # Name filters
         if "name_exact" in filters:
             conditions.append("name = ?")
             params.append(filters["name_exact"])
         if "name_strict" in filters:
-            # Strict exact match - case-sensitive, no partial matching
             conditions.append("name = ? COLLATE BINARY")
             params.append(filters["name_strict"])
         if "name_partial" in filters:
             conditions.append("LOWER(name) LIKE ?")
             params.append(f"%{filters['name_partial'].lower()}%")
+        if "name_contains" in filters:
+            # Support list of partial name matches (for backward compatibility)
+            name_values = filters["name_contains"]
+            if isinstance(name_values, list):
+                for name_val in name_values:
+                    conditions.append("LOWER(name) LIKE ?")
+                    params.append(f"%{name_val.lower()}%")
+            else:
+                conditions.append("LOWER(name) LIKE ?")
+                params.append(f"%{name_values.lower()}%")
 
         # Color filter
         if "colors" in filters:
             color_filter = filters["colors"]
             colors = color_filter.get("value", [])
-            operator = color_filter.get("operator", ":")
-
             if not colors:
                 conditions.append("colors = '[]'")
             else:
                 for c in colors:
-                    conditions.append(f"colors LIKE ?")
+                    conditions.append("colors LIKE ?")
                     params.append(f'%"{c}"%')
 
         # Color identity filter
@@ -561,28 +554,23 @@ class CardStore:
             identity_filter = filters["color_identity"]
             colors = identity_filter.get("value", [])
             operator = identity_filter.get("operator", ":")
-
             if not colors:
-                # Colorless identity
                 conditions.append("color_identity = '[]'")
             elif operator in (":", "="):
-                # Exact match - must have all these colors in identity
                 for c in colors:
-                    conditions.append(f"color_identity LIKE ?")
+                    conditions.append("color_identity LIKE ?")
                     params.append(f'%"{c}"%')
             elif operator == ">=":
-                # At least these colors
                 for c in colors:
-                    conditions.append(f"color_identity LIKE ?")
+                    conditions.append("color_identity LIKE ?")
                     params.append(f'%"{c}"%')
             elif operator == "<=":
-                # At most these colors (subset) - exclude cards with colors not in set
                 all_colors = {"W", "U", "B", "R", "G"}
                 allowed_colors = set(colors)
                 disallowed_colors = all_colors - allowed_colors
                 if disallowed_colors:
                     for c in disallowed_colors:
-                        conditions.append(f"color_identity NOT LIKE ?")
+                        conditions.append("color_identity NOT LIKE ?")
                         params.append(f'%"{c}"%')
 
         # CMC filter
@@ -595,7 +583,7 @@ class CardStore:
             conditions.append(f"cmc {sql_op} ?")
             params.append(value)
 
-        # Type filter (can be single value or list for multiple type requirements)
+        # Type filter
         if "type" in filters:
             type_values = filters["type"]
             if isinstance(type_values, list):
@@ -606,7 +594,7 @@ class CardStore:
                 conditions.append("LOWER(type_line) LIKE ?")
                 params.append(f"%{type_values.lower()}%")
 
-        # Oracle text filter (can be single value or list for multiple text requirements)
+        # Oracle text filter
         if "oracle_text" in filters:
             oracle_values = filters["oracle_text"]
             if isinstance(oracle_values, list):
@@ -617,7 +605,7 @@ class CardStore:
                 conditions.append("LOWER(oracle_text) LIKE ?")
                 params.append(f"%{oracle_values.lower()}%")
 
-        # Flavor text filter (can be single value or list)
+        # Flavor text filter
         if "flavor_text" in filters:
             flavor_values = filters["flavor_text"]
             if isinstance(flavor_values, list):
@@ -641,12 +629,7 @@ class CardStore:
         # Format legality filter
         if "format" in filters:
             format_name = filters["format"].lower()
-            # Validate against allowlist to prevent SQL injection
-            if format_name not in VALID_FORMATS:
-                logger.warning("Invalid format name: %s", format_name)
-            else:
-                # legalities is stored as JSON like {"standard": "legal", "modern": "not_legal"}
-                # Check if the format value is "legal" or "restricted"
+            if format_name in VALID_FORMATS:
                 conditions.append(
                     f"(json_extract(legalities, '$.{format_name}') = 'legal' "
                     f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
@@ -660,10 +643,8 @@ class CardStore:
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
             if value == "*":
-                # Match cards with * power
                 conditions.append("power = '*'")
             else:
-                # Cast power to integer for comparison (excludes * and NULL)
                 conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
                 params.append(value)
 
@@ -675,21 +656,18 @@ class CardStore:
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
             if value == "*":
-                # Match cards with * toughness
                 conditions.append("toughness = '*'")
             else:
-                # Cast toughness to integer for comparison (excludes * and NULL)
                 conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
                 params.append(value)
 
-        # Loyalty filter (for planeswalkers)
+        # Loyalty filter
         if "loyalty" in filters:
             loyalty_filter = filters["loyalty"]
             value = loyalty_filter.get("value")
             operator = loyalty_filter.get("operator", "=")
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
-            # loyalty is stored as a string like "3" or "X"
             conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
             params.append(value)
 
@@ -699,11 +677,9 @@ class CardStore:
             value = cn_filter.get("value")
             operator = cn_filter.get("operator", "=")
             if operator == "=":
-                # Exact match on collector number
                 conditions.append("collector_number = ?")
                 params.append(str(value))
             else:
-                # For range comparisons, try numeric if possible
                 op_map = {">=": ">=", "<=": "<=", ">": ">", "<": "<"}
                 sql_op = op_map.get(operator, "=")
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
@@ -715,24 +691,17 @@ class CardStore:
             currency = price_filter.get("currency", "usd").lower()
             value = price_filter.get("value")
             operator = price_filter.get("operator", "=")
-            # Validate currency against allowlist to prevent SQL injection
-            if currency not in VALID_CURRENCIES:
-                logger.warning("Invalid currency code: %s", currency)
-            else:
+            if currency in VALID_CURRENCIES:
                 op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
                 sql_op = op_map.get(operator, "=")
-                # prices is stored as JSON like {"usd": "1.50", "eur": "1.20"}
-                # Need to cast to REAL for numeric comparison
                 conditions.append(
                     f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
                 )
                 params.append(value)
 
-        # Keyword filter (can be single value or list for multiple keyword requirements)
+        # Keyword filter
         if "keyword" in filters:
             keyword_values = filters["keyword"]
-            # keywords is stored as JSON array like ["Flying", "Vigilance"]
-            # Use case-insensitive LIKE matching
             if isinstance(keyword_values, list):
                 for keyword in keyword_values:
                     conditions.append("LOWER(keywords) LIKE ?")
@@ -741,7 +710,7 @@ class CardStore:
                 conditions.append("LOWER(keywords) LIKE ?")
                 params.append(f'%"{keyword_values.lower()}"%')
 
-        # Keyword NOT filter (negation) - can be single value or list
+        # Keyword NOT filter
         if "keyword_not" in filters:
             keyword_not_values = filters["keyword_not"]
             if isinstance(keyword_not_values, list):
@@ -758,17 +727,69 @@ class CardStore:
             conditions.append("LOWER(artist) LIKE ?")
             params.append(f"%{artist_value.lower()}%")
 
-        # Year filter (based on released_at date)
+        # Year filter
         if "year" in filters:
             year_filter = filters["year"]
             value = year_filter.get("value")
             operator = year_filter.get("operator", "=")
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
-            # released_at is stored as a date string like "2024-08-02"
-            # Extract year using substr (first 4 characters)
             conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
             params.append(value)
+
+        return conditions, params
+
+    def execute_query(
+        self,
+        parsed: ParsedQuery,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Execute a parsed query.
+
+        Args:
+            parsed: ParsedQuery object with filters
+            limit: Maximum results to return
+            offset: Number of results to skip (for pagination)
+
+        Returns:
+            List of matching card dictionaries
+        """
+        # Start with all cards if no filters
+        if parsed.is_empty and not parsed.has_or_clause:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM cards LIMIT ? OFFSET ?", (limit, offset))
+            return [self._row_to_dict(row) for row in cursor.fetchall()]
+
+        # Handle OR queries
+        if parsed.has_or_clause and parsed.or_groups:
+            group_clauses = []
+            all_params: list[Any] = []
+
+            for group_filters in parsed.or_groups:
+                # Merge list of filter dicts into one
+                merged: dict[str, Any] = {}
+                for f in group_filters:
+                    merged.update(f)
+
+                conditions, params = self._build_conditions_for_filters(merged)
+                if conditions:
+                    group_clauses.append(f"({' AND '.join(conditions)})")
+                    all_params.extend(params)
+
+            if group_clauses:
+                where_clause = " OR ".join(group_clauses)
+                query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ? OFFSET ?"
+                all_params.extend([limit, offset])
+                cursor = self._conn.cursor()
+                cursor.execute(query, all_params)
+                return [self._row_to_dict(row) for row in cursor.fetchall()]
+            else:
+                # No valid conditions, return empty
+                return []
+
+        # Standard AND query (no OR)
+        conditions, params = self._build_conditions_for_filters(parsed.filters)
 
         # Build and execute query
         if conditions:

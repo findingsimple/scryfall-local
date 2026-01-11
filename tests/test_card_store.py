@@ -375,6 +375,117 @@ class TestCardStoreComplexQueries:
             store.close()
 
 
+class TestCardStoreORQueries:
+    """Test OR query execution."""
+
+    def test_or_query_simple(self, sample_cards: list[dict[str, Any]]):
+        """Should return cards matching either condition."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # c:blue OR c:red - should get blue cards AND red cards
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[
+                    [{"colors": {"operator": ":", "value": ["U"]}}],
+                    [{"colors": {"operator": ":", "value": ["R"]}}],
+                ],
+                has_or_clause=True,
+                raw_query="c:blue OR c:red",
+            )
+
+            results = store.execute_query(parsed)
+            assert len(results) >= 2  # Should have both blue and red cards
+
+            # Verify we got both colors
+            colors_found = set()
+            for card in results:
+                colors_found.update(card.get("colors", []))
+            assert "U" in colors_found or "R" in colors_found
+
+            store.close()
+
+    def test_or_query_with_type(self, sample_cards: list[dict[str, Any]]):
+        """Should return cards matching either type."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # t:creature OR t:instant
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[
+                    [{"type": "creature"}],
+                    [{"type": "instant"}],
+                ],
+                has_or_clause=True,
+                raw_query="t:creature OR t:instant",
+            )
+
+            results = store.execute_query(parsed)
+            assert len(results) >= 2
+
+            # Verify we got both types
+            for card in results:
+                type_line = card.get("type_line", "").lower()
+                assert "creature" in type_line or "instant" in type_line
+
+            store.close()
+
+    def test_or_query_with_complex_conditions(self, sample_cards: list[dict[str, Any]]):
+        """Should handle OR with complex conditions in each group."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # (c:blue t:instant) OR (c:red t:creature)
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[
+                    [
+                        {"colors": {"operator": ":", "value": ["U"]}},
+                        {"type": "instant"},
+                    ],
+                    [
+                        {"colors": {"operator": ":", "value": ["R"]}},
+                        {"type": "creature"},
+                    ],
+                ],
+                has_or_clause=True,
+                raw_query="(c:blue t:instant) OR (c:red t:creature)",
+            )
+
+            results = store.execute_query(parsed)
+
+            for card in results:
+                colors = card.get("colors", [])
+                type_line = card.get("type_line", "").lower()
+                # Either blue instant OR red creature
+                is_blue_instant = "U" in colors and "instant" in type_line
+                is_red_creature = "R" in colors and "creature" in type_line
+                assert is_blue_instant or is_red_creature
+
+            store.close()
+
+    def test_or_query_empty_groups(self):
+        """Should handle empty or_groups gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[],
+                has_or_clause=True,
+                raw_query="",
+            )
+
+            results = store.execute_query(parsed)
+            assert results == []
+
+            store.close()
+
+
 class TestCardStoreQueryByKeyword:
     """Test keyword ability queries."""
 

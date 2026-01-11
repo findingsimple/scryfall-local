@@ -121,9 +121,20 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 | Syntax | Description | Example |
 |--------|-------------|---------|
 | `term term` | Implicit AND | `c:blue t:instant` |
+| `term OR term` | Logical OR | `c:blue OR c:red` |
 | `-term` | Negation (NOT) | `-t:creature` |
 
-**Note:** OR queries (`c:blue OR c:red`) and grouping (`(a OR b) c`) are parsed but not yet fully implemented. Currently, all terms are ANDed together regardless of OR operators. Full OR support is planned for a future version.
+**OR Query Examples:**
+```
+# Blue cards or red cards
+c:blue OR c:red
+
+# Dragons or angels
+t:dragon OR t:angel
+
+# Cheap blue instants or cheap red sorceries
+c:blue t:instant cmc<=2 OR c:red t:sorcery cmc<=2
+```
 
 ## Complex Query Examples
 
@@ -237,7 +248,6 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
-| OR queries | `c:blue OR c:red` | Logical OR between terms (currently parsed but not executed) |
 | Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |
 
 ### Medium Value
