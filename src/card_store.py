@@ -134,6 +134,7 @@ class CardStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_rarity ON cards(rarity)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artist ON cards(artist)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_released_at ON cards(released_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_oracle_id ON cards(oracle_id)")
 
         # FTS5 virtual table for oracle text search
         cursor.execute("""
