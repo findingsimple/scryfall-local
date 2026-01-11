@@ -1323,27 +1323,20 @@ class CardStore:
 
         return conditions, params
 
-    def execute_query(
-        self,
-        parsed: ParsedQuery,
-        limit: int = 20,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        """Execute a parsed query.
+    def _build_where_clause(self, parsed: ParsedQuery) -> tuple[str | None, list[Any]]:
+        """Build WHERE clause and parameters from a ParsedQuery.
+
+        Handles both simple AND queries and complex OR queries with groups.
 
         Args:
             parsed: ParsedQuery object with filters
-            limit: Maximum results to return
-            offset: Number of results to skip (for pagination)
 
         Returns:
-            List of matching card dictionaries
+            Tuple of (where_clause, params) where where_clause is None if no filters
         """
-        # Start with all cards if no filters
+        # No filters
         if parsed.is_empty and not parsed.has_or_clause:
-            cursor = self._conn.cursor()
-            cursor.execute("SELECT * FROM cards LIMIT ? OFFSET ?", (limit, offset))
-            return [self._row_to_dict(row) for row in cursor.fetchall()]
+            return None, []
 
         # Handle OR queries
         if parsed.has_or_clause and parsed.or_groups:
@@ -1362,22 +1355,38 @@ class CardStore:
                     all_params.extend(params)
 
             if group_clauses:
-                where_clause = " OR ".join(group_clauses)
-                query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ? OFFSET ?"
-                all_params.extend([limit, offset])
-                cursor = self._conn.cursor()
-                cursor.execute(query, all_params)
-                return [self._row_to_dict(row) for row in cursor.fetchall()]
+                return " OR ".join(group_clauses), all_params
             else:
-                # No valid conditions, return empty
-                return []
+                # No valid conditions - return impossible condition
+                return "1=0", []
 
         # Standard AND query (no OR)
         conditions, params = self._build_conditions_for_filters(parsed.filters)
 
-        # Build and execute query
         if conditions:
-            where_clause = " AND ".join(conditions)
+            return " AND ".join(conditions), params
+        else:
+            return None, []
+
+    def execute_query(
+        self,
+        parsed: ParsedQuery,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Execute a parsed query.
+
+        Args:
+            parsed: ParsedQuery object with filters
+            limit: Maximum results to return
+            offset: Number of results to skip (for pagination)
+
+        Returns:
+            List of matching card dictionaries
+        """
+        where_clause, params = self._build_where_clause(parsed)
+
+        if where_clause:
             query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ? OFFSET ?"
             params.extend([limit, offset])
         else:
@@ -1397,46 +1406,14 @@ class CardStore:
         Returns:
             Total count of matching cards
         """
-        cursor = self._conn.cursor()
+        where_clause, params = self._build_where_clause(parsed)
 
-        # No filters - count all cards
-        if parsed.is_empty and not parsed.has_or_clause:
-            cursor.execute("SELECT COUNT(*) FROM cards")
-            return cursor.fetchone()[0]
-
-        # Handle OR queries
-        if parsed.has_or_clause and parsed.or_groups:
-            group_clauses = []
-            all_params: list[Any] = []
-
-            for group_filters in parsed.or_groups:
-                merged: dict[str, Any] = {}
-                for f in group_filters:
-                    merged.update(f)
-
-                conditions, params = self._build_conditions_for_filters(merged)
-                if conditions:
-                    group_clauses.append(f"({' AND '.join(conditions)})")
-                    all_params.extend(params)
-
-            if group_clauses:
-                where_clause = " OR ".join(group_clauses)
-                query = f"SELECT COUNT(*) FROM cards WHERE {where_clause}"
-                cursor.execute(query, all_params)
-                return cursor.fetchone()[0]
-            else:
-                return 0
-
-        # Standard AND query (no OR)
-        conditions, params = self._build_conditions_for_filters(parsed.filters)
-
-        if conditions:
-            where_clause = " AND ".join(conditions)
+        if where_clause:
             query = f"SELECT COUNT(*) FROM cards WHERE {where_clause}"
         else:
             query = "SELECT COUNT(*) FROM cards"
-            params = []
 
+        cursor = self._conn.cursor()
         cursor.execute(query, params)
         return cursor.fetchone()[0]
 
