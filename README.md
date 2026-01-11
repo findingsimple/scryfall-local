@@ -81,11 +81,16 @@ python -m src.cli import --file path/to/cards.json
 
 #### Available Data Types
 
-| Type | Size | Description |
-|------|------|-------------|
-| `all_cards` | ~2.3 GB | Every card in every language (default) |
-| `oracle_cards` | ~160 MB | One card per Oracle ID |
-| `default_cards` | ~500 MB | Every card in English |
+| Type | Size | Cards | Description |
+|------|------|-------|-------------|
+| `all_cards` | ~2.3 GB | ~521,000 | Every printing in every language (default) |
+| `oracle_cards` | ~160 MB | ~37,000 | One card per Oracle ID (unique cards only) |
+| `default_cards` | ~500 MB | ~100,000 | Every printing in English |
+
+> **Note:** The default `all_cards` includes every printing of every card. For example, Lightning Bolt has 150+ printings across different sets, promos, and languages. If you only need unique cards (one per Oracle ID), use `oracle_cards` for a much smaller dataset:
+> ```bash
+> python -m src.cli download --type oracle_cards
+> ```
 
 #### Workflow
 

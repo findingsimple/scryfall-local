@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import ijson
 import mcp.types as types
 from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
@@ -62,10 +63,33 @@ class ScryfallServer:
         return self._store
 
     def close(self) -> None:
-        """Close server resources."""
+        """Close server resources synchronously."""
         if self._store is not None:
             self._store.close()
             self._store = None
+
+    async def cleanup(self) -> None:
+        """Clean up all server resources including async tasks.
+
+        This method should be called on shutdown to ensure:
+        - Background refresh tasks are cancelled
+        - Database connections are closed
+        - Data manager resources are released
+        """
+        # Cancel any background refresh task
+        if self._refresh_task is not None and not self._refresh_task.done():
+            self._refresh_task.cancel()
+            try:
+                await self._refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._refresh_task = None
+
+        # Close database connection
+        self.close()
+
+        # Close data manager
+        await self._data_manager.close()
 
     def __enter__(self) -> "ScryfallServer":
         """Enter context manager."""
@@ -74,6 +98,14 @@ class ScryfallServer:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit context manager and close resources."""
         self.close()
+
+    async def __aenter__(self) -> "ScryfallServer":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager and clean up resources."""
+        await self.cleanup()
 
     def _init_db(self, cards: list[dict[str, Any]]) -> None:
         """Initialize database with cards (for testing).
@@ -108,6 +140,11 @@ class ScryfallServer:
                             "type": "integer",
                             "description": "Maximum results to return (default 20, max 100)",
                             "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of results to skip for pagination (default 0)",
+                            "default": 0,
                         },
                     },
                     "required": ["query"],
@@ -212,13 +249,14 @@ class ScryfallServer:
         """Search for cards.
 
         Args:
-            arguments: {"query": str, "limit": int}
+            arguments: {"query": str, "limit": int, "offset": int}
 
         Returns:
-            {"cards": [...], "total_count": int, "query_time_ms": int}
+            {"cards": [...], "total_count": int, "query_time_ms": int, "offset": int}
         """
         query = arguments.get("query", "")
         limit = min(arguments.get("limit", 20), 100)
+        offset = max(arguments.get("offset", 0), 0)
 
         start_time = time.time()
 
@@ -232,7 +270,7 @@ class ScryfallServer:
             }
 
         store = self._get_store()
-        cards = store.execute_query(parsed, limit=limit)
+        cards = store.execute_query(parsed, limit=limit, offset=offset)
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -240,6 +278,7 @@ class ScryfallServer:
             "cards": cards,
             "total_count": len(cards),
             "query_time_ms": elapsed_ms,
+            "offset": offset,
         }
 
     async def _get_card(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -377,18 +416,28 @@ class ScryfallServer:
             if self.db_path.exists():
                 self.db_path.unlink()
 
-            # Load JSON and import
-            with open(file_path) as f:
-                cards = json.load(f)
-
+            # Load JSON using streaming parser to reduce memory usage
             store = self._get_store()
             batch_size = 1000
-            for i in range(0, len(cards), batch_size):
-                batch = cards[i : i + batch_size]
+            batch: list[dict[str, Any]] = []
+            card_count = 0
+
+            with open(file_path, "rb") as f:
+                # ijson.items streams through the JSON array one item at a time
+                for card in ijson.items(f, "item"):
+                    batch.append(card)
+                    if len(batch) >= batch_size:
+                        store.insert_cards(batch)
+                        card_count += len(batch)
+                        batch = []
+
+            # Insert remaining cards
+            if batch:
                 store.insert_cards(batch)
+                card_count += len(batch)
 
             # Update metadata with card count
-            self._data_manager.update_card_count(len(cards))
+            self._data_manager.update_card_count(card_count)
 
             self._refresh_status = "completed"
 
@@ -453,14 +502,14 @@ class ScryfallServer:
             }
 
 
-def create_server(data_dir: Path) -> Server:
+def create_server(data_dir: Path) -> tuple[Server, ScryfallServer]:
     """Create MCP server instance.
 
     Args:
         data_dir: Directory for storing card data
 
     Returns:
-        Configured MCP Server
+        Tuple of (MCP Server, ScryfallServer instance for cleanup)
     """
     scryfall = ScryfallServer(data_dir)
 
@@ -493,7 +542,7 @@ def create_server(data_dir: Path) -> Server:
             )
         ]
 
-    return server
+    return server, scryfall
 
 
 async def run_server(data_dir: Path | None = None) -> None:
@@ -509,21 +558,25 @@ async def run_server(data_dir: Path | None = None) -> None:
 
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    server = create_server(data_dir)
+    server, scryfall = create_server(data_dir)
 
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="scryfall-local",
-                server_version="0.1.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
+    try:
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="scryfall-local",
+                    server_version="0.1.0",
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
                 ),
-            ),
-        )
+            )
+    finally:
+        # Ensure cleanup on shutdown
+        await scryfall.cleanup()
 
 
 if __name__ == "__main__":

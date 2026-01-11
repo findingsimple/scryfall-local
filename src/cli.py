@@ -2,9 +2,11 @@
 
 import argparse
 import asyncio
-import json
 import sys
 from pathlib import Path
+from typing import Callable
+
+import ijson
 
 from src.data_manager import DataManager
 from src.card_store import CardStore
@@ -37,6 +39,50 @@ def print_progress_bar(
 
     sys.stdout.write(f"\r  [{bar}] {percent*100:.1f}% ({downloaded_str} / {total_str})")
     sys.stdout.flush()
+
+
+def import_cards_streaming(
+    json_file: Path,
+    store: CardStore,
+    progress_callback: Callable[[int, int | None], None] | None = None,
+) -> int:
+    """Import cards from JSON using streaming parser.
+
+    Uses ijson to parse the JSON file incrementally, reducing memory usage
+    from ~2.5GB to a small fixed amount regardless of file size.
+
+    Args:
+        json_file: Path to the JSON file containing card data
+        store: CardStore instance to import cards into
+        progress_callback: Optional callback(imported_count, total) for progress updates.
+                          total may be None if unknown.
+
+    Returns:
+        Total number of cards imported
+    """
+    batch_size = 1000
+    batch: list[dict] = []
+    card_count = 0
+
+    with open(json_file, "rb") as f:
+        # ijson.items streams through the JSON array one item at a time
+        for card in ijson.items(f, "item"):
+            batch.append(card)
+            if len(batch) >= batch_size:
+                store.insert_cards(batch)
+                card_count += len(batch)
+                batch = []
+                if progress_callback:
+                    progress_callback(card_count, None)
+
+    # Insert remaining cards
+    if batch:
+        store.insert_cards(batch)
+        card_count += len(batch)
+        if progress_callback:
+            progress_callback(card_count, None)
+
+    return card_count
 
 
 async def download_data(data_dir: Path, data_type: str = "all_cards") -> None:
@@ -77,33 +123,21 @@ async def download_data(data_dir: Path, data_type: str = "all_cards") -> None:
         print()  # New line after progress bar
         print(f"Downloaded to: {file_path}")
 
-        # Import into database
+        # Import into database using streaming parser
         print()
         print("Importing cards into database...")
 
         db_path = data_dir / "cards.db"
         store = CardStore(db_path)
 
-        # Load and import cards
-        with open(file_path) as f:
-            cards = json.load(f)
-
-        total_cards = len(cards)
-        print(f"  Found {total_cards:,} cards")
-
-        # Import in batches with progress
-        batch_size = 1000
-        for i in range(0, total_cards, batch_size):
-            batch = cards[i : i + batch_size]
-            store.insert_cards(batch)
-
-            progress = min(i + batch_size, total_cards)
-            percent = progress / total_cards * 100
-            sys.stdout.write(f"\r  Importing... {percent:.1f}% ({progress:,} / {total_cards:,})")
+        def import_progress(imported: int, total: int | None) -> None:
+            sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
+        total_cards = import_cards_streaming(file_path, store, import_progress)
+
         print()
-        print(f"Import complete!")
+        print(f"Import complete! {total_cards:,} cards imported.")
 
         # Update metadata with card count
         manager.update_card_count(total_cards)
@@ -172,15 +206,6 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
     print(f"  File size: {format_size(json_file.stat().st_size)}")
     print()
 
-    # Load JSON
-    print("Loading JSON file...")
-    with open(json_file) as f:
-        cards = json.load(f)
-
-    total_cards = len(cards)
-    print(f"  Found {total_cards:,} cards")
-    print()
-
     # Import into database
     db_path = data_dir / "cards.db"
 
@@ -191,16 +216,13 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
 
     store = CardStore(db_path)
 
-    print("Importing cards into database...")
-    batch_size = 1000
-    for i in range(0, total_cards, batch_size):
-        batch = cards[i : i + batch_size]
-        store.insert_cards(batch)
+    print("Importing cards using streaming parser...")
 
-        progress = min(i + batch_size, total_cards)
-        percent = progress / total_cards * 100
-        sys.stdout.write(f"\r  [{('█' * int(percent / 2.5)).ljust(40, '░')}] {percent:.1f}% ({progress:,} / {total_cards:,})")
+    def import_progress(imported: int, total: int | None) -> None:
+        sys.stdout.write(f"\r  Importing... {imported:,} cards")
         sys.stdout.flush()
+
+    total_cards = import_cards_streaming(json_file, store, import_progress)
 
     print()
     print()

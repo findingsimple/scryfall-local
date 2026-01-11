@@ -97,6 +97,34 @@ class TestServerSearchCards:
                 assert len(result["cards"]) <= 2
 
     @pytest.mark.asyncio
+    async def test_search_cards_with_offset(self, sample_cards: list[dict[str, Any]]):
+        """Should support pagination with offset parameter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Get first page
+                page1 = await server.call_tool(
+                    "search_cards",
+                    {"query": "", "limit": 2, "offset": 0},
+                )
+                # Get second page
+                page2 = await server.call_tool(
+                    "search_cards",
+                    {"query": "", "limit": 2, "offset": 2},
+                )
+
+                assert "offset" in page1
+                assert page1["offset"] == 0
+                assert page2["offset"] == 2
+
+                # Check no overlap between pages
+                if len(page1["cards"]) > 0 and len(page2["cards"]) > 0:
+                    page1_ids = {c["id"] for c in page1["cards"]}
+                    page2_ids = {c["id"] for c in page2["cards"]}
+                    assert len(page1_ids & page2_ids) == 0
+
+    @pytest.mark.asyncio
     async def test_search_cards_error_handling(self, sample_cards: list[dict[str, Any]]):
         """Should return error for invalid queries."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -294,10 +322,13 @@ class TestServerLowLevel:
     """Test low-level MCP server functionality."""
 
     def test_create_server(self):
-        """Should create MCP server instance."""
+        """Should create MCP server instance and return ScryfallServer for cleanup."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            server = create_server(Path(tmpdir))
+            server, scryfall = create_server(Path(tmpdir))
             assert server is not None
+            assert scryfall is not None
+            # Clean up
+            scryfall.close()
 
     def test_server_name(self):
         """Server should have correct name."""

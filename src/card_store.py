@@ -7,12 +7,34 @@ All queries use parameterized statements for SQL injection prevention.
 import json
 import logging
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from src.query_parser import ParsedQuery
 
 logger = logging.getLogger(__name__)
+
+# Allowlists for SQL-interpolated values (security: prevents SQL injection)
+VALID_FORMATS = frozenset({
+    "standard", "future", "historic", "timeless", "gladiator",
+    "pioneer", "modern", "legacy", "pauper", "vintage",
+    "penny", "commander", "oathbreaker", "standardbrawl", "brawl",
+    "alchemy", "paupercommander", "duel", "oldschool", "premodern", "predh"
+})
+
+VALID_CURRENCIES = frozenset({
+    "usd", "usd_foil", "usd_etched", "eur", "eur_foil", "tix"
+})
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal objects from ijson streaming parser."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 
 class CardStore:
@@ -185,19 +207,24 @@ class CardStore:
         Returns:
             Tuple of parameters for SQL insert
         """
+        # Convert cmc from Decimal to float if needed (ijson returns Decimal)
+        cmc = card.get("cmc")
+        if isinstance(cmc, Decimal):
+            cmc = float(cmc)
+
         return (
             card.get("id"),
             card.get("oracle_id"),
             card.get("name"),
             card.get("mana_cost"),
-            card.get("cmc"),
+            cmc,
             card.get("type_line"),
             card.get("oracle_text"),
             card.get("power"),
             card.get("toughness"),
-            json.dumps(card.get("colors", [])),
-            json.dumps(card.get("color_identity", [])),
-            json.dumps(card.get("keywords", [])),
+            json.dumps(card.get("colors", []), cls=DecimalEncoder),
+            json.dumps(card.get("color_identity", []), cls=DecimalEncoder),
+            json.dumps(card.get("keywords", []), cls=DecimalEncoder),
             card.get("set"),
             card.get("set_name"),
             card.get("rarity"),
@@ -206,10 +233,10 @@ class CardStore:
             card.get("loyalty"),
             card.get("flavor_text"),
             card.get("collector_number"),
-            json.dumps(card.get("image_uris", {})),
-            json.dumps(card.get("legalities", {})),
-            json.dumps(card.get("prices", {})),
-            json.dumps(card),
+            json.dumps(card.get("image_uris", {}), cls=DecimalEncoder),
+            json.dumps(card.get("legalities", {}), cls=DecimalEncoder),
+            json.dumps(card.get("prices", {}), cls=DecimalEncoder),
+            json.dumps(card, cls=DecimalEncoder),
         )
 
     def insert_card(self, card: dict[str, Any]) -> None:
@@ -480,12 +507,14 @@ class CardStore:
         self,
         parsed: ParsedQuery,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Execute a parsed query.
 
         Args:
             parsed: ParsedQuery object with filters
             limit: Maximum results to return
+            offset: Number of results to skip (for pagination)
 
         Returns:
             List of matching card dictionaries
@@ -493,7 +522,7 @@ class CardStore:
         # Start with all cards if no filters
         if parsed.is_empty:
             cursor = self._conn.cursor()
-            cursor.execute("SELECT * FROM cards LIMIT ?", (limit,))
+            cursor.execute("SELECT * FROM cards LIMIT ? OFFSET ?", (limit, offset))
             return [self._row_to_dict(row) for row in cursor.fetchall()]
 
         # Build query conditions
@@ -611,13 +640,17 @@ class CardStore:
 
         # Format legality filter
         if "format" in filters:
-            format_name = filters["format"]
-            # legalities is stored as JSON like {"standard": "legal", "modern": "not_legal"}
-            # Check if the format value is "legal" or "restricted"
-            conditions.append(
-                f"(json_extract(legalities, '$.{format_name}') = 'legal' "
-                f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
-            )
+            format_name = filters["format"].lower()
+            # Validate against allowlist to prevent SQL injection
+            if format_name not in VALID_FORMATS:
+                logger.warning("Invalid format name: %s", format_name)
+            else:
+                # legalities is stored as JSON like {"standard": "legal", "modern": "not_legal"}
+                # Check if the format value is "legal" or "restricted"
+                conditions.append(
+                    f"(json_extract(legalities, '$.{format_name}') = 'legal' "
+                    f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
+                )
 
         # Power filter
         if "power" in filters:
@@ -679,17 +712,21 @@ class CardStore:
         # Price filter
         if "price" in filters:
             price_filter = filters["price"]
-            currency = price_filter.get("currency", "usd")
+            currency = price_filter.get("currency", "usd").lower()
             value = price_filter.get("value")
             operator = price_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
-            # prices is stored as JSON like {"usd": "1.50", "eur": "1.20"}
-            # Need to cast to REAL for numeric comparison
-            conditions.append(
-                f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
-            )
-            params.append(value)
+            # Validate currency against allowlist to prevent SQL injection
+            if currency not in VALID_CURRENCIES:
+                logger.warning("Invalid currency code: %s", currency)
+            else:
+                op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+                sql_op = op_map.get(operator, "=")
+                # prices is stored as JSON like {"usd": "1.50", "eur": "1.20"}
+                # Need to cast to REAL for numeric comparison
+                conditions.append(
+                    f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
+                )
+                params.append(value)
 
         # Keyword filter (can be single value or list for multiple keyword requirements)
         if "keyword" in filters:
@@ -736,11 +773,11 @@ class CardStore:
         # Build and execute query
         if conditions:
             where_clause = " AND ".join(conditions)
-            query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ?"
-            params.append(limit)
+            query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         else:
-            query = "SELECT * FROM cards LIMIT ?"
-            params = [limit]
+            query = "SELECT * FROM cards LIMIT ? OFFSET ?"
+            params = [limit, offset]
 
         cursor = self._conn.cursor()
         cursor.execute(query, params)

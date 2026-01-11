@@ -307,3 +307,92 @@ class TestMain:
                     main()
                     mock_run.assert_called_once()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
+
+
+class TestStreamingImport:
+    """Test streaming JSON import functionality."""
+
+    def test_import_cards_streaming_basic(self):
+        """Should import cards using streaming parser."""
+        from src.cli import import_cards_streaming
+        from src.card_store import CardStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create sample JSON file
+            sample_cards = [
+                {"id": "1", "name": "Card One", "cmc": 1, "colors": ["R"]},
+                {"id": "2", "name": "Card Two", "cmc": 2, "colors": ["U"]},
+                {"id": "3", "name": "Card Three", "cmc": 3, "colors": ["G"]},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(sample_cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            count = import_cards_streaming(json_file, store)
+
+            assert count == 3
+            assert store.get_card_count() == 3
+            store.close()
+
+    def test_import_cards_streaming_with_progress(self):
+        """Should call progress callback during import."""
+        from src.cli import import_cards_streaming
+        from src.card_store import CardStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create sample JSON file with enough cards to trigger progress
+            sample_cards = [
+                {"id": str(i), "name": f"Card {i}", "cmc": i % 5, "colors": []}
+                for i in range(1500)  # More than batch_size of 1000
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(sample_cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            progress_calls = []
+
+            def progress_callback(imported: int, total: int | None):
+                progress_calls.append(imported)
+
+            count = import_cards_streaming(json_file, store, progress_callback)
+
+            assert count == 1500
+            # Should have been called at least twice (after first batch and final)
+            assert len(progress_calls) >= 2
+            # Progress should be increasing
+            for i in range(1, len(progress_calls)):
+                assert progress_calls[i] >= progress_calls[i - 1]
+
+            store.close()
+
+    def test_import_cards_streaming_empty_file(self):
+        """Should handle empty JSON array."""
+        from src.cli import import_cards_streaming
+        from src.card_store import CardStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create empty JSON array
+            json_file = tmpdir_path / "empty.json"
+            with open(json_file, "w") as f:
+                json.dump([], f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            count = import_cards_streaming(json_file, store)
+
+            assert count == 0
+            assert store.get_card_count() == 0
+            store.close()

@@ -76,6 +76,24 @@ class TestCardStoreInsert:
 
             store.close()
 
+    def test_insert_handles_decimal_values(self, cards_with_decimal_values: list[dict[str, Any]]):
+        """Should handle Decimal values from ijson streaming parser."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # This should not raise TypeError: Object of type Decimal is not JSON serializable
+            store.insert_cards(cards_with_decimal_values)
+            assert store.get_card_count() == 2
+
+            # Verify cards can be retrieved and queried
+            card = store.get_card_by_name("Decimal Test Card")
+            assert card is not None
+            assert card["cmc"] == 3.0  # Should be stored as float
+            assert card["name"] == "Decimal Test Card"
+
+            store.close()
+
 
 class TestCardStoreQueryByName:
     """Test name-based queries."""
@@ -614,3 +632,132 @@ class TestCardStoreRandomCard:
             assert "R" in card["colors"]
 
             store.close()
+
+
+class TestCardStorePagination:
+    """Test pagination with offset."""
+
+    def test_query_with_offset(self, sample_cards: list[dict[str, Any]]):
+        """Should skip results when offset is specified."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Get first page
+            page1 = store.execute_query(ParsedQuery(raw_query=""), limit=2, offset=0)
+            # Get second page
+            page2 = store.execute_query(ParsedQuery(raw_query=""), limit=2, offset=2)
+
+            assert len(page1) == 2
+            assert len(page2) >= 1  # May be less if fewer cards
+            # Ensure no overlap
+            page1_ids = {c["id"] for c in page1}
+            page2_ids = {c["id"] for c in page2}
+            assert len(page1_ids & page2_ids) == 0
+
+            store.close()
+
+    def test_query_offset_with_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should paginate filtered results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Get all results
+            parsed = ParsedQuery(
+                filters={"type": "creature"},
+                raw_query="t:creature",
+            )
+            all_results = store.execute_query(parsed, limit=100, offset=0)
+
+            if len(all_results) >= 2:
+                # Get first result only
+                first = store.execute_query(parsed, limit=1, offset=0)
+                # Get second result only
+                second = store.execute_query(parsed, limit=1, offset=1)
+
+                assert first[0]["id"] != second[0]["id"]
+
+            store.close()
+
+
+class TestCardStoreConcurrentAccess:
+    """Test concurrent database access."""
+
+    def test_multiple_readers(self, sample_cards: list[dict[str, Any]]):
+        """Multiple read operations should work concurrently."""
+        import threading
+        import time
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            results = []
+            errors = []
+
+            def read_cards():
+                try:
+                    # Create a new connection for this thread
+                    thread_store = CardStore(db_path)
+                    cards = thread_store.execute_query(ParsedQuery(raw_query=""))
+                    results.append(len(cards))
+                    thread_store.close()
+                except Exception as e:
+                    errors.append(str(e))
+
+            # Start multiple reader threads
+            threads = [threading.Thread(target=read_cards) for _ in range(5)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            assert len(errors) == 0, f"Errors: {errors}"
+            assert all(r == len(sample_cards) for r in results)
+
+            store.close()
+
+    def test_writer_and_readers(self, sample_cards: list[dict[str, Any]]):
+        """Writing while reading should not cause errors when using separate connections."""
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            # Initial setup
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards[:2])  # Insert some cards first
+            store.close()
+
+            errors = []
+
+            def read_cards():
+                try:
+                    # Each thread gets its own connection
+                    thread_store = CardStore(db_path)
+                    for _ in range(10):
+                        thread_store.execute_query(ParsedQuery(raw_query=""))
+                    thread_store.close()
+                except Exception as e:
+                    errors.append(str(e))
+
+            def write_cards():
+                try:
+                    # Writer thread also uses its own connection
+                    write_store = CardStore(db_path)
+                    for card in sample_cards[2:]:
+                        write_store.insert_card(card)
+                    write_store.close()
+                except Exception as e:
+                    errors.append(str(e))
+
+            reader = threading.Thread(target=read_cards)
+            writer = threading.Thread(target=write_cards)
+
+            reader.start()
+            writer.start()
+            reader.join()
+            writer.join()
+
+            assert len(errors) == 0, f"Errors: {errors}"

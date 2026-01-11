@@ -1,5 +1,7 @@
 """Shared test fixtures for Scryfall Local MCP Server."""
 
+from decimal import Decimal
+
 import pytest
 from typing import Any
 
@@ -360,6 +362,49 @@ def sample_cards_with_keywords() -> list[dict[str, Any]]:
             "rarity": "common",
             "image_uris": {},
             "legalities": {"commander": "legal"},
+            "prices": {},
+        },
+    ]
+
+
+@pytest.fixture
+def cards_with_decimal_values() -> list[dict[str, Any]]:
+    """Cards with Decimal values simulating ijson streaming parser output."""
+    return [
+        {
+            "id": "decimal-test-1",
+            "oracle_id": "decimal-oracle-1",
+            "name": "Decimal Test Card",
+            "mana_cost": "{2}{R}",
+            "cmc": Decimal("3.0"),  # ijson returns Decimal for numbers
+            "type_line": "Creature — Test",
+            "oracle_text": "Test card with Decimal CMC",
+            "power": "2",
+            "toughness": "2",
+            "colors": ["R"],
+            "color_identity": ["R"],
+            "set": "tst",
+            "set_name": "Test Set",
+            "rarity": "common",
+            "image_uris": {"normal": "https://example.com/image.jpg"},
+            "legalities": {"commander": "legal"},
+            "prices": {"usd": "1.50", "eur": "1.25"},
+        },
+        {
+            "id": "decimal-test-2",
+            "oracle_id": "decimal-oracle-2",
+            "name": "Another Decimal Card",
+            "mana_cost": "{X}{U}{U}",
+            "cmc": Decimal("2.0"),
+            "type_line": "Instant",
+            "oracle_text": "Another test with Decimal",
+            "colors": ["U"],
+            "color_identity": ["U"],
+            "set": "tst",
+            "set_name": "Test Set",
+            "rarity": "rare",
+            "image_uris": {},
+            "legalities": {"modern": "legal"},
             "prices": {},
         },
     ]

@@ -121,9 +121,9 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 | Syntax | Description | Example |
 |--------|-------------|---------|
 | `term term` | Implicit AND | `c:blue t:instant` |
-| `term OR term` | Logical OR | `c:blue OR c:red` |
 | `-term` | Negation (NOT) | `-t:creature` |
-| `(terms)` | Grouping | `(c:blue OR c:red) t:instant` |
+
+**Note:** OR queries (`c:blue OR c:red`) and grouping (`(a OR b) c`) are parsed but not yet fully implemented. Currently, all terms are ANDed together regardless of OR operators. Full OR support is planned for a future version.
 
 ## Complex Query Examples
 
@@ -140,8 +140,8 @@ c>=ur t:"legendary creature"
 # Mythic rares from Core Set 2019
 set:m19 r:mythic
 
-# Red or green cards that aren't creatures
-(c:red OR c:green) -t:creature
+# Green creatures without flying
+c:green t:creature -kw:flying
 
 # Cards with "enters the battlefield" text
 o:"enters the battlefield"
@@ -237,17 +237,25 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
+| OR queries | `c:blue OR c:red` | Logical OR between terms (currently parsed but not executed) |
 | Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |
 
 ### Medium Value
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
+| Query grouping | `(a OR b) c` | Parenthetical grouping for complex boolean logic |
 | Full oracle text | `fo:"reminder"` | Includes reminder text |
 | Produces mana | `produces:g` | Cards that produce specific mana |
 | Block | `b:innistrad` | Set block filtering |
 | Banned in format | `banned:modern` | Cards banned in format |
 | Watermark | `wm:phyrexian` | Faction/guild watermarks |
+
+### Performance Improvements
+
+| Feature | Description |
+|---------|-------------|
+| Optimized random card | Use `ORDER BY RANDOM()` instead of fetching 1000 cards |
 
 ### Not Planned
 
