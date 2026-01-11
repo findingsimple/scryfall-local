@@ -549,6 +549,18 @@ class CardStore:
                     conditions.append("colors LIKE ?")
                     params.append(f'%"{c}"%')
 
+        # Color NOT filter
+        if "colors_not" in filters:
+            color_not_filter = filters["colors_not"]
+            colors = color_not_filter.get("value", [])
+            if not colors:
+                # -c:colorless means NOT colorless, i.e., has at least one color
+                conditions.append("colors != '[]'")
+            else:
+                for c in colors:
+                    conditions.append("colors NOT LIKE ?")
+                    params.append(f'%"{c}"%')
+
         # Color identity filter
         if "color_identity" in filters:
             identity_filter = filters["color_identity"]
@@ -573,6 +585,18 @@ class CardStore:
                         conditions.append("color_identity NOT LIKE ?")
                         params.append(f'%"{c}"%')
 
+        # Color identity NOT filter
+        if "color_identity_not" in filters:
+            identity_not_filter = filters["color_identity_not"]
+            colors = identity_not_filter.get("value", [])
+            if not colors:
+                # -id:colorless means NOT colorless, i.e., has at least one color
+                conditions.append("color_identity != '[]'")
+            else:
+                for c in colors:
+                    conditions.append("color_identity NOT LIKE ?")
+                    params.append(f'%"{c}"%')
+
         # CMC filter
         if "cmc" in filters:
             cmc_filter = filters["cmc"]
@@ -581,6 +605,13 @@ class CardStore:
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
             conditions.append(f"cmc {sql_op} ?")
+            params.append(value)
+
+        # CMC NOT filter
+        if "cmc_not" in filters:
+            cmc_not_filter = filters["cmc_not"]
+            value = cmc_not_filter.get("value", 0)
+            conditions.append("cmc != ?")
             params.append(value)
 
         # Type filter
@@ -594,6 +625,17 @@ class CardStore:
                 conditions.append("LOWER(type_line) LIKE ?")
                 params.append(f"%{type_values.lower()}%")
 
+        # Type NOT filter
+        if "type_not" in filters:
+            type_not_values = filters["type_not"]
+            if isinstance(type_not_values, list):
+                for type_val in type_not_values:
+                    conditions.append("(type_line IS NULL OR LOWER(type_line) NOT LIKE ?)")
+                    params.append(f"%{type_val.lower()}%")
+            else:
+                conditions.append("(type_line IS NULL OR LOWER(type_line) NOT LIKE ?)")
+                params.append(f"%{type_not_values.lower()}%")
+
         # Oracle text filter
         if "oracle_text" in filters:
             oracle_values = filters["oracle_text"]
@@ -604,6 +646,17 @@ class CardStore:
             else:
                 conditions.append("LOWER(oracle_text) LIKE ?")
                 params.append(f"%{oracle_values.lower()}%")
+
+        # Oracle text NOT filter
+        if "oracle_text_not" in filters:
+            oracle_not_values = filters["oracle_text_not"]
+            if isinstance(oracle_not_values, list):
+                for oracle_val in oracle_not_values:
+                    conditions.append("(oracle_text IS NULL OR LOWER(oracle_text) NOT LIKE ?)")
+                    params.append(f"%{oracle_val.lower()}%")
+            else:
+                conditions.append("(oracle_text IS NULL OR LOWER(oracle_text) NOT LIKE ?)")
+                params.append(f"%{oracle_not_values.lower()}%")
 
         # Flavor text filter
         if "flavor_text" in filters:
@@ -616,15 +669,36 @@ class CardStore:
                 conditions.append("LOWER(flavor_text) LIKE ?")
                 params.append(f"%{flavor_values.lower()}%")
 
+        # Flavor text NOT filter
+        if "flavor_text_not" in filters:
+            flavor_not_values = filters["flavor_text_not"]
+            if isinstance(flavor_not_values, list):
+                for flavor_val in flavor_not_values:
+                    conditions.append("(flavor_text IS NULL OR LOWER(flavor_text) NOT LIKE ?)")
+                    params.append(f"%{flavor_val.lower()}%")
+            else:
+                conditions.append("(flavor_text IS NULL OR LOWER(flavor_text) NOT LIKE ?)")
+                params.append(f"%{flavor_not_values.lower()}%")
+
         # Set filter
         if "set" in filters:
             conditions.append("LOWER(set_code) = ?")
             params.append(filters["set"].lower())
 
+        # Set NOT filter
+        if "set_not" in filters:
+            conditions.append("LOWER(set_code) != ?")
+            params.append(filters["set_not"].lower())
+
         # Rarity filter
         if "rarity" in filters:
             conditions.append("LOWER(rarity) = ?")
             params.append(filters["rarity"].lower())
+
+        # Rarity NOT filter
+        if "rarity_not" in filters:
+            conditions.append("LOWER(rarity) != ?")
+            params.append(filters["rarity_not"].lower())
 
         # Format legality filter
         if "format" in filters:
@@ -633,6 +707,16 @@ class CardStore:
                 conditions.append(
                     f"(json_extract(legalities, '$.{format_name}') = 'legal' "
                     f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
+                )
+
+        # Format NOT filter (cards NOT legal in format)
+        if "format_not" in filters:
+            format_name = filters["format_not"].lower()
+            if format_name in VALID_FORMATS:
+                conditions.append(
+                    f"(json_extract(legalities, '$.{format_name}') IS NULL "
+                    f"OR (json_extract(legalities, '$.{format_name}') != 'legal' "
+                    f"AND json_extract(legalities, '$.{format_name}') != 'restricted'))"
                 )
 
         # Power filter

@@ -655,6 +655,136 @@ class TestCardStoreQueryByKeyword:
             store.close()
 
 
+class TestCardStoreNegationFilters:
+    """Test negation filter handling (-type, -color, etc.)."""
+
+    def test_type_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards matching type."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"type_not": ["creature"]},
+                raw_query="-t:creature",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert "creature" not in card.get("type_line", "").lower()
+
+            store.close()
+
+    def test_oracle_text_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards with specific oracle text."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"oracle_text_not": ["damage"]},
+                raw_query="-o:damage",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                oracle_text = card.get("oracle_text", "") or ""
+                assert "damage" not in oracle_text.lower()
+
+            store.close()
+
+    def test_colors_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards with specific color."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"colors_not": {"operator": ":", "value": ["R"]}},
+                raw_query="-c:red",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                colors = card.get("colors", [])
+                assert "R" not in colors
+
+            store.close()
+
+    def test_set_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards from specific set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"set_not": "lea"},
+                raw_query="-set:lea",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert card.get("set_code", "").lower() != "lea"
+
+            store.close()
+
+    def test_rarity_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards of specific rarity."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"rarity_not": "common"},
+                raw_query="-r:common",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert card.get("rarity", "").lower() != "common"
+
+            store.close()
+
+    def test_cmc_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards with specific CMC."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"cmc_not": {"operator": ":", "value": 1}},
+                raw_query="-cmc:1",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert card.get("cmc") != 1
+
+            store.close()
+
+    def test_combined_negation_with_positive_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should support combining negation with positive filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Find creatures that are NOT red
+            parsed = ParsedQuery(
+                filters={
+                    "type": ["creature"],
+                    "colors_not": {"operator": ":", "value": ["R"]},
+                },
+                raw_query="t:creature -c:red",
+            )
+            results = store.execute_query(parsed)
+
+            for card in results:
+                assert "creature" in card.get("type_line", "").lower()
+                assert "R" not in card.get("colors", [])
+
+            store.close()
+
+
 class TestCardStoreSecurity:
     """Test security measures."""
 
