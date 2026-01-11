@@ -85,22 +85,26 @@ def import_cards_streaming(
     return card_count
 
 
-async def download_data(data_dir: Path, data_type: str = "all_cards") -> None:
+async def download_data(
+    data_dir: Path, data_type: str = "all_cards", force: bool = False
+) -> None:
     """Download bulk data with progress bar."""
     manager = DataManager(data_dir)
 
-    print(f"Checking for updates...")
+    print("Checking for updates...")
 
     try:
-        # Check if update is needed
-        is_stale = await manager.is_cache_stale()
+        # Check if update is needed (skip if force=True)
+        if not force:
+            is_stale = await manager.is_cache_stale()
 
-        if not is_stale:
-            status = await manager.get_status()
-            print(f"Data is already up to date!")
-            print(f"  Last updated: {status.last_updated}")
-            print(f"  Cards: {status.card_count:,}")
-            return
+            if not is_stale:
+                status = await manager.get_status()
+                print("Data is already up to date!")
+                print(f"  Last updated: {status.last_updated}")
+                print(f"  Cards: {status.card_count:,}")
+                print("  Use --force to re-download anyway.")
+                return
 
         # Get info about the download
         info = await manager.get_bulk_data_info(data_type)
@@ -290,7 +294,7 @@ def main() -> None:
     args.data_dir.mkdir(parents=True, exist_ok=True)
 
     if args.command == "download":
-        asyncio.run(download_data(args.data_dir, args.type))
+        asyncio.run(download_data(args.data_dir, args.type, args.force))
     elif args.command == "import":
         asyncio.run(import_data(args.data_dir, getattr(args, "file", None)))
     elif args.command == "status":
