@@ -5,7 +5,8 @@ import pytest
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
 
 from src.server import ScryfallServer, create_server
 
@@ -400,3 +401,112 @@ class TestServerLowLevel:
         with tempfile.TemporaryDirectory() as tmpdir:
             with ScryfallServer(Path(tmpdir)) as server:
                 assert "scryfall" in server.name.lower()
+
+
+class TestServerBackgroundRefresh:
+    """Test background refresh task handling."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_in_progress_returns_status(self, sample_cards: list[dict[str, Any]]):
+        """Should return status when refresh already in progress."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Simulate a refresh in progress with a real-ish task mock
+                server._refresh_status = "downloading"
+                mock_task = MagicMock()
+                mock_task.done.return_value = False
+                server._refresh_task = mock_task
+
+                result = await server.call_tool("refresh_data", {})
+
+                assert "already in progress" in result.get("message", "")
+
+    @pytest.mark.asyncio
+    async def test_refresh_completed_status_resets(self, sample_cards: list[dict[str, Any]]):
+        """Should reset status and report completion."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Simulate completed refresh
+                server._refresh_status = "completed"
+                server._refresh_task = None
+
+                result = await server.call_tool("refresh_data", {})
+
+                assert "completed" in result.get("message", "").lower()
+                assert server._refresh_status == "idle"
+
+    @pytest.mark.asyncio
+    async def test_refresh_error_status_resets(self, sample_cards: list[dict[str, Any]]):
+        """Should reset status and report error from previous refresh."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Simulate failed refresh
+                server._refresh_status = "error: Network timeout"
+                server._refresh_task = None
+
+                result = await server.call_tool("refresh_data", {})
+
+                assert "error" in result.get("message", "").lower()
+                assert server._refresh_status == "idle"
+
+    @pytest.mark.asyncio
+    async def test_server_cleanup_cancels_refresh_task(self, sample_cards: list[dict[str, Any]]):
+        """Server cleanup should cancel any running refresh task."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            server = ScryfallServer(Path(tmpdir))
+            server._init_db(sample_cards)
+
+            # Create a mock task that simulates a running async task
+            cancelled = False
+
+            async def mock_coro():
+                nonlocal cancelled
+                try:
+                    await asyncio.sleep(10)
+                except asyncio.CancelledError:
+                    cancelled = True
+                    raise
+
+            task = asyncio.create_task(mock_coro())
+            server._refresh_task = task
+
+            # Cleanup the server (should cancel the task)
+            await server.cleanup()
+
+            # Task should be cancelled and set to None
+            assert server._refresh_task is None
+            assert cancelled or task.cancelled()
+
+    @pytest.mark.asyncio
+    async def test_data_status_includes_refresh_status(self, sample_cards: list[dict[str, Any]]):
+        """data_status should include refresh_status when not idle."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Set a non-idle status
+                server._refresh_status = "downloading"
+
+                result = await server.call_tool("data_status", {})
+
+                assert result.get("refresh_status") == "downloading"
+
+    @pytest.mark.asyncio
+    async def test_data_status_excludes_idle_refresh_status(self, sample_cards: list[dict[str, Any]]):
+        """data_status should not include refresh_status when idle."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Ensure idle status
+                server._refresh_status = "idle"
+
+                result = await server.call_tool("data_status", {})
+
+                assert "refresh_status" not in result

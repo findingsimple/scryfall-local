@@ -1,5 +1,6 @@
 """Tests for card store (SQLite) - TDD approach."""
 
+import json
 import pytest
 import tempfile
 from pathlib import Path
@@ -1110,3 +1111,144 @@ class TestCardStoreConcurrentAccess:
             writer.join()
 
             assert len(errors) == 0, f"Errors: {errors}"
+
+
+class TestCardStoreMigration:
+    """Test database schema migration."""
+
+    def test_migration_adds_missing_columns(self):
+        """Should add missing columns when opening old database."""
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+
+            # Create an "old" database with minimal schema (missing new columns)
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE cards (
+                    id TEXT PRIMARY KEY,
+                    oracle_id TEXT,
+                    name TEXT NOT NULL,
+                    mana_cost TEXT,
+                    cmc REAL,
+                    type_line TEXT,
+                    oracle_text TEXT,
+                    power TEXT,
+                    toughness TEXT,
+                    colors TEXT,
+                    color_identity TEXT,
+                    set_code TEXT,
+                    set_name TEXT,
+                    rarity TEXT,
+                    image_uris TEXT,
+                    legalities TEXT,
+                    prices TEXT,
+                    raw_data TEXT
+                )
+            """)
+
+            # Insert a card with data in raw_data that should be migrated
+            raw_data = {
+                "keywords": ["Flying", "Vigilance"],
+                "artist": "Test Artist",
+                "released_at": "2024-01-01",
+                "loyalty": "4",
+                "flavor_text": "Test flavor",
+                "collector_number": "123",
+            }
+            cursor.execute(
+                "INSERT INTO cards (id, name, raw_data) VALUES (?, ?, ?)",
+                ("test-id", "Test Card", json.dumps(raw_data)),
+            )
+            conn.commit()
+            conn.close()
+
+            # Open with CardStore - should trigger migration
+            store = CardStore(db_path)
+
+            # Verify new columns exist and have data
+            card = store.get_card_by_id("test-id")
+            assert card is not None
+            assert card.get("keywords") == ["Flying", "Vigilance"]
+            assert card.get("artist") == "Test Artist"
+            assert card.get("released_at") == "2024-01-01"
+            assert card.get("loyalty") == "4"
+            assert card.get("flavor_text") == "Test flavor"
+            assert card.get("collector_number") == "123"
+
+            store.close()
+
+    def test_migration_preserves_existing_data(self, sample_cards: list[dict[str, Any]]):
+        """Migration should not affect databases that already have all columns."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+
+            # Create database with full schema
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+            original_count = store.get_card_count()
+            store.close()
+
+            # Reopen - should not cause issues
+            store = CardStore(db_path)
+            assert store.get_card_count() == original_count
+
+            # Verify cards are intact
+            for card_data in sample_cards:
+                card = store.get_card_by_id(card_data["id"])
+                assert card is not None
+                assert card["name"] == card_data["name"]
+
+            store.close()
+
+    def test_migration_handles_null_raw_data(self):
+        """Migration should handle cards with NULL raw_data gracefully."""
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+
+            # Create old database with NULL raw_data
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE cards (
+                    id TEXT PRIMARY KEY,
+                    oracle_id TEXT,
+                    name TEXT NOT NULL,
+                    mana_cost TEXT,
+                    cmc REAL,
+                    type_line TEXT,
+                    oracle_text TEXT,
+                    power TEXT,
+                    toughness TEXT,
+                    colors TEXT,
+                    color_identity TEXT,
+                    set_code TEXT,
+                    set_name TEXT,
+                    rarity TEXT,
+                    image_uris TEXT,
+                    legalities TEXT,
+                    prices TEXT,
+                    raw_data TEXT
+                )
+            """)
+            cursor.execute(
+                "INSERT INTO cards (id, name, raw_data) VALUES (?, ?, ?)",
+                ("test-id", "Test Card", None),
+            )
+            conn.commit()
+            conn.close()
+
+            # Should not crash when opening
+            store = CardStore(db_path)
+            card = store.get_card_by_id("test-id")
+            assert card is not None
+            assert card["name"] == "Test Card"
+            # New columns should be None
+            assert card.get("keywords") is None
+            assert card.get("artist") is None
+
+            store.close()
