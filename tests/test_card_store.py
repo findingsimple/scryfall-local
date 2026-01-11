@@ -1169,6 +1169,53 @@ class TestCardStoreNewFilters:
 
             store.close()
 
+    def test_produces_filter_with_sample_cards(self, sample_cards: list[dict[str, Any]]):
+        """produces: filter should work with sample_cards fixture."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Test produces:g finds Llanowar Elves
+            parsed = ParsedQuery(
+                filters={"produces": ["G"]},
+                raw_query="produces:g",
+            )
+            results = store.execute_query(parsed)
+            names = [c["name"] for c in results]
+            assert "Llanowar Elves" in names
+            assert "Lightning Bolt" not in names
+
+            # Test produces:b finds Dark Ritual
+            parsed = ParsedQuery(
+                filters={"produces": ["B"]},
+                raw_query="produces:b",
+            )
+            results = store.execute_query(parsed)
+            names = [c["name"] for c in results]
+            assert "Dark Ritual" in names
+            assert "Llanowar Elves" not in names
+
+            store.close()
+
+    def test_produces_colorless_with_sample_cards(self, sample_cards: list[dict[str, Any]]):
+        """produces:c should find Sol Ring from sample_cards fixture."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # produces:c passes an empty list [] which means colorless
+            parsed = ParsedQuery(
+                filters={"produces": []},
+                raw_query="produces:c",
+            )
+            results = store.execute_query(parsed)
+            names = [c["name"] for c in results]
+            assert "Sol Ring" in names
+            assert "Llanowar Elves" not in names
+            assert "Dark Ritual" not in names
+
+            store.close()
+
     def test_watermark_filter(self):
         """wm:selesnya should find cards with selesnya watermark."""
         with tempfile.TemporaryDirectory() as tmpdir:
