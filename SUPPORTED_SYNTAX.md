@@ -123,6 +123,7 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 | `term term` | Implicit AND | `c:blue t:instant` |
 | `term OR term` | Logical OR | `c:blue OR c:red` |
 | `-term` | Negation (NOT) | `-t:creature` |
+| `(a OR b) c` | Parenthetical grouping | `(t:elf OR t:goblin) c:green` |
 
 **OR Query Examples:**
 ```
@@ -134,6 +135,18 @@ t:dragon OR t:angel
 
 # Cheap blue instants or cheap red sorceries
 c:blue t:instant cmc<=2 OR c:red t:sorcery cmc<=2
+```
+
+**Parenthetical Grouping:**
+```
+# Green elves or green goblins
+(t:elf OR t:goblin) c:green
+
+# Rare or mythic dragons
+(r:rare OR r:mythic) t:dragon
+
+# Rare green elves or rare green goblins
+c:green (t:elf OR t:goblin) r:rare
 ```
 
 ## Complex Query Examples
@@ -254,7 +267,6 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
-| Query grouping | `(a OR b) c` | Parenthetical grouping for complex boolean logic |
 | Full oracle text | `fo:"reminder"` | Includes reminder text |
 | Produces mana | `produces:g` | Cards that produce specific mana |
 | Block | `b:innistrad` | Set block filtering |
@@ -265,7 +277,7 @@ The following syntax is documented for future implementation:
 
 | Feature | Description |
 |---------|-------------|
-| Optimized random card | Use `ORDER BY RANDOM()` instead of fetching 1000 cards |
+| Optimized filtered random | Filtered random queries still fetch up to 1000 cards; unfiltered already uses `ORDER BY RANDOM()` |
 
 ### Not Planned
 
