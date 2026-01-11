@@ -272,6 +272,49 @@ class TestQueryParserBooleanOperators:
         assert "type" in result.filters
         assert result.has_or_clause
 
+    def test_parse_parenthesized_or_with_outer_filter_after(self):
+        """(t:elf OR t:goblin) c:green - outer filter should distribute to each OR group."""
+        parser = QueryParser()
+        result = parser.parse("(t:elf OR t:goblin) c:green")
+
+        assert result.has_or_clause
+        assert len(result.or_groups) == 2
+
+        # Each OR group should contain both the type and color filter
+        for group in result.or_groups:
+            filter_keys = [list(f.keys())[0] for f in group]
+            assert "type" in filter_keys
+            assert "colors" in filter_keys
+
+    def test_parse_parenthesized_or_with_outer_filter_before(self):
+        """c:green (t:elf OR t:goblin) - filter before parens should distribute."""
+        parser = QueryParser()
+        result = parser.parse("c:green (t:elf OR t:goblin)")
+
+        assert result.has_or_clause
+        assert len(result.or_groups) == 2
+
+        # Each OR group should contain both filters
+        for group in result.or_groups:
+            filter_keys = [list(f.keys())[0] for f in group]
+            assert "type" in filter_keys
+            assert "colors" in filter_keys
+
+    def test_parse_parenthesized_or_with_filters_both_sides(self):
+        """c:green (t:elf OR t:goblin) r:rare - filters on both sides should distribute."""
+        parser = QueryParser()
+        result = parser.parse("c:green (t:elf OR t:goblin) r:rare")
+
+        assert result.has_or_clause
+        assert len(result.or_groups) == 2
+
+        # Each OR group should contain type, color, AND rarity
+        for group in result.or_groups:
+            filter_keys = [list(f.keys())[0] for f in group]
+            assert "type" in filter_keys
+            assert "colors" in filter_keys
+            assert "rarity" in filter_keys
+
 
 class TestQueryParserColorIdentity:
     """Test color identity queries."""

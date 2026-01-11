@@ -332,6 +332,7 @@ class QueryParser:
         or_groups: list[list[dict[str, Any]]] = []
         has_or = False
         negated = False
+        or_from_parens = False  # Track if OR groups came from parentheses
 
         # Simple state machine for parsing
         current_group: list[dict[str, Any]] = []
@@ -371,6 +372,12 @@ class QueryParser:
                 # Merge inner filters
                 if inner_result.has_or_clause:
                     has_or = True
+                    or_from_parens = True
+                    # Add any filters collected before parentheses to each inner OR group
+                    if current_group:
+                        for group in inner_result.or_groups:
+                            group.extend(current_group)
+                        current_group = []
                     or_groups.extend(inner_result.or_groups)
                 else:
                     current_group.append(inner_result.filters)
@@ -405,8 +412,14 @@ class QueryParser:
             i += 1
 
         # Handle remaining group for OR
-        if has_or and current_group:
-            or_groups.append(current_group)
+        if has_or:
+            if or_from_parens and current_group and or_groups:
+                # Distribute outer filters (after parentheses) to each OR group
+                # e.g., (t:elf OR t:goblin) c:green -> (elf AND green) OR (goblin AND green)
+                for group in or_groups:
+                    group.extend(current_group)
+            elif current_group:
+                or_groups.append(current_group)
 
         return ParsedQuery(
             filters=filters,

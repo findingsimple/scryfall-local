@@ -485,6 +485,42 @@ class TestCardStoreORQueries:
 
             store.close()
 
+    def test_or_query_parenthesized_with_outer_filter(self, sample_cards: list[dict[str, Any]]):
+        """(t:creature OR t:instant) c:blue - should AND outer filter with each OR group."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Simulates: (t:creature OR t:instant) c:blue
+            # Should find blue creatures OR blue instants
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[
+                    [
+                        {"type": "creature"},
+                        {"colors": {"operator": ":", "value": ["U"]}},
+                    ],
+                    [
+                        {"type": "instant"},
+                        {"colors": {"operator": ":", "value": ["U"]}},
+                    ],
+                ],
+                has_or_clause=True,
+                raw_query="(t:creature OR t:instant) c:blue",
+            )
+
+            results = store.execute_query(parsed)
+
+            # All results must be blue AND either creature or instant
+            for card in results:
+                colors = card.get("colors", [])
+                type_line = card.get("type_line", "").lower()
+                assert "U" in colors, f"Card {card['name']} should be blue"
+                assert "creature" in type_line or "instant" in type_line, \
+                    f"Card {card['name']} should be creature or instant"
+
+            store.close()
+
 
 class TestCardStoreQueryByKeyword:
     """Test keyword ability queries."""
