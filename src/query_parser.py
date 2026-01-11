@@ -109,7 +109,6 @@ class ParsedQuery:
     """Structured representation of a parsed query."""
 
     filters: dict[str, Any] = field(default_factory=dict)
-    conditions: list[dict[str, Any]] = field(default_factory=list)
     or_groups: list[list[dict[str, Any]]] = field(default_factory=list)
     has_or_clause: bool = False
     raw_query: str = ""
@@ -117,12 +116,12 @@ class ParsedQuery:
     @property
     def is_empty(self) -> bool:
         """Check if query has no filters."""
-        return len(self.filters) == 0 and len(self.conditions) == 0
+        return len(self.filters) == 0 and not self.has_or_clause
 
     @property
     def filter_count(self) -> int:
         """Count total number of filters."""
-        return len(self.filters) + len(self.conditions)
+        return len(self.filters)
 
     def __str__(self) -> str:
         """Human-readable representation."""
@@ -328,7 +327,6 @@ class QueryParser:
     def _parse_tokens(self, tokens: list[tuple[str, Any]], raw_query: str) -> ParsedQuery:
         """Parse tokens into ParsedQuery."""
         filters: dict[str, Any] = {}
-        conditions: list[dict[str, Any]] = []
         or_groups: list[list[dict[str, Any]]] = []
         has_or = False
         negated = False
@@ -423,7 +421,6 @@ class QueryParser:
 
         return ParsedQuery(
             filters=filters,
-            conditions=conditions,
             or_groups=or_groups,
             has_or_clause=has_or,
             raw_query=raw_query,
