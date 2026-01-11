@@ -117,6 +117,79 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+# Layouts that store data in card_faces instead of at top level
+DOUBLE_FACED_LAYOUTS = frozenset({
+    "transform", "modal_dfc", "split", "adventure", "meld", "flip", "reversible_card"
+})
+
+
+def _extract_from_card_faces(card: dict[str, Any]) -> dict[str, Any]:
+    """Extract searchable fields from card_faces for double-faced cards.
+
+    For cards with layouts like transform, modal_dfc, split, adventure, etc.,
+    key fields (oracle_text, mana_cost, power, toughness, etc.) are stored in
+    the card_faces array rather than at the top level. This function extracts
+    and combines those fields.
+
+    Args:
+        card: Card data dictionary
+
+    Returns:
+        Dictionary with extracted fields (only non-null values included)
+    """
+    faces = card.get("card_faces")
+    if not faces:
+        return {}
+
+    extracted: dict[str, Any] = {}
+
+    # Oracle text: join all face texts with " // "
+    oracle_texts = [f.get("oracle_text", "") for f in faces if f.get("oracle_text")]
+    if oracle_texts:
+        extracted["oracle_text"] = " // ".join(oracle_texts)
+
+    # Mana cost: join all face mana costs with " // "
+    mana_costs = [f.get("mana_cost", "") for f in faces if f.get("mana_cost")]
+    if mana_costs:
+        extracted["mana_cost"] = " // ".join(mana_costs)
+
+    # Type line: join all face type lines with " // "
+    type_lines = [f.get("type_line", "") for f in faces if f.get("type_line")]
+    if type_lines:
+        extracted["type_line"] = " // ".join(type_lines)
+
+    # Power/toughness: use first face that has them (typically creatures)
+    for face in faces:
+        if face.get("power") is not None and "power" not in extracted:
+            extracted["power"] = face["power"]
+        if face.get("toughness") is not None and "toughness" not in extracted:
+            extracted["toughness"] = face["toughness"]
+
+    # Loyalty: use first face that has it (planeswalkers)
+    for face in faces:
+        if face.get("loyalty") is not None:
+            extracted["loyalty"] = face["loyalty"]
+            break
+
+    # Colors: union of all face colors
+    all_colors: set[str] = set()
+    for face in faces:
+        face_colors = face.get("colors", [])
+        if face_colors:
+            all_colors.update(face_colors)
+    if all_colors:
+        # Sort for consistent ordering: WUBRG
+        color_order = {"W": 0, "U": 1, "B": 2, "R": 3, "G": 4}
+        extracted["colors"] = sorted(all_colors, key=lambda c: color_order.get(c, 5))
+
+    # Flavor text: join all face flavor texts with " // "
+    flavor_texts = [f.get("flavor_text", "") for f in faces if f.get("flavor_text")]
+    if flavor_texts:
+        extracted["flavor_text"] = " // ".join(flavor_texts)
+
+    return extracted
+
+
 class CardStore:
     """SQLite-based card storage with FTS5 text search."""
 
@@ -300,6 +373,9 @@ class CardStore:
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
         """Extract card data as SQL parameters.
 
+        For double-faced cards (transform, modal_dfc, split, adventure, etc.),
+        extracts data from card_faces when top-level fields are null.
+
         Args:
             card: Card data dictionary
 
@@ -311,17 +387,38 @@ class CardStore:
         if isinstance(cmc, Decimal):
             cmc = float(cmc)
 
+        # For double-faced cards, extract data from card_faces when top-level is null
+        layout = card.get("layout", "")
+        face_data: dict[str, Any] = {}
+        if layout in DOUBLE_FACED_LAYOUTS and card.get("card_faces"):
+            face_data = _extract_from_card_faces(card)
+
+        # Helper to get value from top-level or fall back to extracted face data
+        def get_field(field: str) -> Any:
+            value = card.get(field)
+            if value is None and field in face_data:
+                return face_data[field]
+            return value
+
+        # For colors, use face_data only if top-level colors is empty/missing
+        # (some DFCs have colors at top level too)
+        colors = card.get("colors")
+        if not colors and "colors" in face_data:
+            colors = face_data["colors"]
+        elif colors is None:
+            colors = []
+
         return (
             card.get("id"),
             card.get("oracle_id"),
             card.get("name"),
-            card.get("mana_cost"),
+            get_field("mana_cost"),
             cmc,
-            card.get("type_line"),
-            card.get("oracle_text"),
-            card.get("power"),
-            card.get("toughness"),
-            json.dumps(card.get("colors", []), cls=DecimalEncoder),
+            get_field("type_line"),
+            get_field("oracle_text"),
+            get_field("power"),
+            get_field("toughness"),
+            json.dumps(colors, cls=DecimalEncoder),
             json.dumps(card.get("color_identity", []), cls=DecimalEncoder),
             json.dumps(card.get("keywords", []), cls=DecimalEncoder),
             card.get("set"),
@@ -329,8 +426,8 @@ class CardStore:
             card.get("rarity"),
             card.get("artist"),
             card.get("released_at"),
-            card.get("loyalty"),
-            card.get("flavor_text"),
+            get_field("loyalty"),
+            get_field("flavor_text"),
             card.get("collector_number"),
             card.get("watermark"),
             json.dumps(card.get("produced_mana", []), cls=DecimalEncoder),

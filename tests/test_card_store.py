@@ -1691,3 +1691,264 @@ class TestCardStoreMigration:
             assert card.get("artist") is None
 
             store.close()
+
+
+class TestDoubleFacedCards:
+    """Test handling of double-faced cards (transform, modal_dfc, split, adventure)."""
+
+    def test_transform_card_extracts_oracle_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have oracle text extracted from card_faces."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Insert Delver of Secrets (transform)
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            # Oracle text should be combined from both faces
+            assert "look at the top card" in card["oracle_text"]
+            assert "Flying" in card["oracle_text"]
+            assert " // " in card["oracle_text"]
+
+            store.close()
+
+    def test_transform_card_extracts_mana_cost(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have mana cost extracted from first face."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            assert "{U}" in card["mana_cost"]
+
+            store.close()
+
+    def test_transform_card_extracts_power_toughness(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have power/toughness from first creature face."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            # Should get first face's stats (Delver is 1/1)
+            assert card["power"] == "1"
+            assert card["toughness"] == "1"
+
+            store.close()
+
+    def test_transform_card_extracts_type_line(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have type line combined from faces."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            assert "Creature" in card["type_line"]
+            assert "Human Wizard" in card["type_line"]
+
+            store.close()
+
+    def test_transform_card_extracts_colors(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have colors from card_faces when top-level is empty."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            # Should extract blue from faces
+            assert "U" in card["colors"]
+
+            store.close()
+
+    def test_modal_dfc_extracts_oracle_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Modal DFCs should have oracle text combined from both faces."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            shatterskull = double_faced_cards[1]
+            store.insert_card(shatterskull)
+
+            card = store.get_card_by_id(shatterskull["id"])
+            assert card is not None
+            # Should have text from both Sorcery face and Land face
+            assert "damage" in card["oracle_text"].lower()
+            assert "Add {R}" in card["oracle_text"]
+            assert " // " in card["oracle_text"]
+
+            store.close()
+
+    def test_split_card_extracts_oracle_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Split cards should have oracle text combined from both halves."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            fire_ice = double_faced_cards[2]
+            store.insert_card(fire_ice)
+
+            card = store.get_card_by_id(fire_ice["id"])
+            assert card is not None
+            # Should have text from both Fire and Ice
+            assert "2 damage" in card["oracle_text"]
+            assert "Draw a card" in card["oracle_text"]
+
+            store.close()
+
+    def test_split_card_preserves_top_level_colors(self, double_faced_cards: list[dict[str, Any]]):
+        """Split cards should preserve colors when already at top level."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            fire_ice = double_faced_cards[2]
+            store.insert_card(fire_ice)
+
+            card = store.get_card_by_id(fire_ice["id"])
+            assert card is not None
+            # Fire // Ice has colors at top level
+            assert "R" in card["colors"]
+            assert "U" in card["colors"]
+
+            store.close()
+
+    def test_adventure_card_extracts_oracle_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Adventure cards should have oracle text from both creature and adventure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            bonecrusher = double_faced_cards[3]
+            store.insert_card(bonecrusher)
+
+            card = store.get_card_by_id(bonecrusher["id"])
+            assert card is not None
+            # Should have text from creature and Stomp adventure
+            assert "target of a spell" in card["oracle_text"]
+            assert "Damage can't be prevented" in card["oracle_text"]
+
+            store.close()
+
+    def test_adventure_card_extracts_power_toughness(self, double_faced_cards: list[dict[str, Any]]):
+        """Adventure cards should have power/toughness from creature face."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            bonecrusher = double_faced_cards[3]
+            store.insert_card(bonecrusher)
+
+            card = store.get_card_by_id(bonecrusher["id"])
+            assert card is not None
+            # Bonecrusher Giant is 4/3
+            assert card["power"] == "4"
+            assert card["toughness"] == "3"
+
+            store.close()
+
+    def test_transform_planeswalker_extracts_loyalty(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform planeswalkers should have loyalty from planeswalker face."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            jace = double_faced_cards[4]
+            store.insert_card(jace)
+
+            card = store.get_card_by_id(jace["id"])
+            assert card is not None
+            # Jace, Telepath Unbound has loyalty 5
+            assert card["loyalty"] == "5"
+
+            store.close()
+
+    def test_transform_card_extracts_flavor_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Transform cards should have flavor text combined from faces."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            delver = double_faced_cards[0]
+            store.insert_card(delver)
+
+            card = store.get_card_by_id(delver["id"])
+            assert card is not None
+            # Should have flavor text from both faces
+            assert "hypothesis" in card["flavor_text"]
+            assert "famous and dead" in card["flavor_text"]
+
+            store.close()
+
+    def test_dfc_searchable_by_oracle_text(self, double_faced_cards: list[dict[str, Any]]):
+        """Double-faced cards should be searchable by their extracted oracle text."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            # Search for Delver by its oracle text
+            results = store.query_by_oracle_text("upkeep")
+            assert len(results) >= 1
+            assert any("Delver" in r["name"] for r in results)
+
+            # Search for Bonecrusher by Stomp text
+            results = store.query_by_oracle_text("Damage can't be prevented")
+            assert len(results) >= 1
+            assert any("Bonecrusher" in r["name"] for r in results)
+
+            store.close()
+
+    def test_dfc_searchable_by_type(self, double_faced_cards: list[dict[str, Any]]):
+        """Double-faced cards should be searchable by type line."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            # Search for creatures
+            results = store.query_by_type("creature")
+            creature_names = [r["name"] for r in results]
+            # Delver, Bonecrusher, and Jace (creature side) should match
+            assert any("Delver" in name for name in creature_names)
+            assert any("Bonecrusher" in name for name in creature_names)
+
+            store.close()
+
+    def test_normal_card_not_affected(self, sample_cards: list[dict[str, Any]], double_faced_cards: list[dict[str, Any]]):
+        """Normal cards (without card_faces) should still work correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Insert both normal and DFC cards
+            store.insert_cards(sample_cards)
+            store.insert_cards(double_faced_cards)
+
+            # Check normal card
+            bolt = store.get_card_by_name("Lightning Bolt")
+            assert bolt is not None
+            assert bolt["oracle_text"] == "Lightning Bolt deals 3 damage to any target."
+            assert bolt["mana_cost"] == "{R}"
+
+            store.close()

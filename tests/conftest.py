@@ -417,3 +417,218 @@ def cards_with_decimal_values() -> list[dict[str, Any]]:
             "prices": {},
         },
     ]
+
+
+@pytest.fixture
+def double_faced_cards() -> list[dict[str, Any]]:
+    """Double-faced cards for testing card_faces extraction.
+
+    These cards have layouts where data is stored in card_faces[] instead of
+    at the top level. The fixture covers:
+    - Transform (Delver of Secrets)
+    - Modal DFC (Shatterskull Smashing)
+    - Split (Fire // Ice)
+    - Adventure (Bonecrusher Giant)
+    """
+    return [
+        # Transform card - creature that flips to another creature
+        {
+            "id": "dfc-transform-delver",
+            "oracle_id": "dfc-oracle-delver",
+            "name": "Delver of Secrets // Insectile Aberration",
+            "layout": "transform",
+            "mana_cost": None,  # At top level it's null
+            "cmc": 1.0,
+            "type_line": None,  # At top level it's null
+            "oracle_text": None,  # At top level it's null
+            "power": None,
+            "toughness": None,
+            "colors": [],  # Empty at top level for some transform cards
+            "color_identity": ["U"],
+            "keywords": ["Transform"],
+            "set": "isd",
+            "set_name": "Innistrad",
+            "rarity": "common",
+            "card_faces": [
+                {
+                    "name": "Delver of Secrets",
+                    "mana_cost": "{U}",
+                    "type_line": "Creature — Human Wizard",
+                    "oracle_text": "At the beginning of your upkeep, look at the top card of your library. You may reveal that card. If an instant or sorcery card is revealed this way, transform Delver of Secrets.",
+                    "power": "1",
+                    "toughness": "1",
+                    "colors": ["U"],
+                    "flavor_text": "\"If my hypothesis is correct...\""
+                },
+                {
+                    "name": "Insectile Aberration",
+                    "mana_cost": "",
+                    "type_line": "Creature — Human Insect",
+                    "oracle_text": "Flying",
+                    "power": "3",
+                    "toughness": "2",
+                    "colors": ["U"],
+                    "flavor_text": "\"...I will be both famous and dead.\""
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "2.00"},
+        },
+        # Modal DFC - land on back, instant/sorcery on front
+        {
+            "id": "dfc-mdfc-shatterskull",
+            "oracle_id": "dfc-oracle-shatterskull",
+            "name": "Shatterskull Smashing // Shatterskull, the Hammer Pass",
+            "layout": "modal_dfc",
+            "mana_cost": None,
+            "cmc": 2.0,
+            "type_line": None,
+            "oracle_text": None,
+            "power": None,
+            "toughness": None,
+            "colors": [],
+            "color_identity": ["R"],
+            "keywords": [],
+            "set": "znr",
+            "set_name": "Zendikar Rising",
+            "rarity": "mythic",
+            "card_faces": [
+                {
+                    "name": "Shatterskull Smashing",
+                    "mana_cost": "{X}{R}{R}",
+                    "type_line": "Sorcery",
+                    "oracle_text": "Shatterskull Smashing deals X damage divided as you choose among up to two target creatures and/or planeswalkers. If X is 6 or more, Shatterskull Smashing deals twice X damage divided as you choose among them instead.",
+                    "colors": ["R"],
+                },
+                {
+                    "name": "Shatterskull, the Hammer Pass",
+                    "mana_cost": "",
+                    "type_line": "Land",
+                    "oracle_text": "As Shatterskull, the Hammer Pass enters the battlefield, you may pay 3 life. If you don't, it enters the battlefield tapped.\n{T}: Add {R}.",
+                    "colors": [],
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"standard": "not_legal", "modern": "legal", "commander": "legal"},
+            "prices": {"usd": "8.00"},
+        },
+        # Split card - two spells on one card
+        {
+            "id": "dfc-split-fire-ice",
+            "oracle_id": "dfc-oracle-fire-ice",
+            "name": "Fire // Ice",
+            "layout": "split",
+            "mana_cost": "{1}{R} // {1}{U}",  # Split cards often have combined mana cost
+            "cmc": 4.0,
+            "type_line": "Instant // Instant",
+            "oracle_text": None,  # Often null, in faces
+            "colors": ["R", "U"],  # Combined colors at top level
+            "color_identity": ["R", "U"],
+            "keywords": [],
+            "set": "mh2",
+            "set_name": "Modern Horizons 2",
+            "rarity": "rare",
+            "card_faces": [
+                {
+                    "name": "Fire",
+                    "mana_cost": "{1}{R}",
+                    "type_line": "Instant",
+                    "oracle_text": "Fire deals 2 damage divided as you choose among one or two targets.",
+                    "colors": ["R"],
+                },
+                {
+                    "name": "Ice",
+                    "mana_cost": "{1}{U}",
+                    "type_line": "Instant",
+                    "oracle_text": "Tap target permanent.\nDraw a card.",
+                    "colors": ["U"],
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "1.50"},
+        },
+        # Adventure card - creature with adventure spell
+        {
+            "id": "dfc-adventure-bonecrusher",
+            "oracle_id": "dfc-oracle-bonecrusher",
+            "name": "Bonecrusher Giant // Stomp",
+            "layout": "adventure",
+            "mana_cost": None,
+            "cmc": 3.0,
+            "type_line": None,
+            "oracle_text": None,
+            "power": None,
+            "toughness": None,
+            "colors": [],
+            "color_identity": ["R"],
+            "keywords": ["Adventure"],
+            "set": "eld",
+            "set_name": "Throne of Eldraine",
+            "rarity": "rare",
+            "card_faces": [
+                {
+                    "name": "Bonecrusher Giant",
+                    "mana_cost": "{2}{R}",
+                    "type_line": "Creature — Giant",
+                    "oracle_text": "Whenever Bonecrusher Giant becomes the target of a spell, Bonecrusher Giant deals 2 damage to that spell's controller.",
+                    "power": "4",
+                    "toughness": "3",
+                    "colors": ["R"],
+                },
+                {
+                    "name": "Stomp",
+                    "mana_cost": "{1}{R}",
+                    "type_line": "Instant — Adventure",
+                    "oracle_text": "Damage can't be prevented this turn. Stomp deals 2 damage to any target.",
+                    "colors": ["R"],
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "0.50"},
+        },
+        # Transform planeswalker - creature that transforms to planeswalker
+        {
+            "id": "dfc-transform-jace",
+            "oracle_id": "dfc-oracle-jace",
+            "name": "Jace, Vryn's Prodigy // Jace, Telepath Unbound",
+            "layout": "transform",
+            "mana_cost": None,
+            "cmc": 2.0,
+            "type_line": None,
+            "oracle_text": None,
+            "power": None,
+            "toughness": None,
+            "loyalty": None,  # Null at top level, back face has loyalty
+            "colors": [],
+            "color_identity": ["U"],
+            "keywords": ["Transform"],
+            "set": "ori",
+            "set_name": "Magic Origins",
+            "rarity": "mythic",
+            "card_faces": [
+                {
+                    "name": "Jace, Vryn's Prodigy",
+                    "mana_cost": "{1}{U}",
+                    "type_line": "Legendary Creature — Human Wizard",
+                    "oracle_text": "{T}: Draw a card, then discard a card. If there are five or more cards in your graveyard, exile Jace, Vryn's Prodigy, then return him to the battlefield transformed under his owner's control.",
+                    "power": "0",
+                    "toughness": "2",
+                    "colors": ["U"],
+                },
+                {
+                    "name": "Jace, Telepath Unbound",
+                    "mana_cost": "",
+                    "type_line": "Legendary Planeswalker — Jace",
+                    "oracle_text": "+1: Up to one target creature gets -2/-0 until your next turn.\n−3: You may cast target instant or sorcery card from your graveyard this turn. If that spell would be put into your graveyard, exile it instead.\n−9: You get an emblem with \"Whenever you cast a spell, target opponent mills five cards.\"",
+                    "colors": ["U"],
+                    "loyalty": "5",
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "15.00"},
+        },
+    ]
