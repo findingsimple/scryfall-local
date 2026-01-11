@@ -105,7 +105,7 @@ class TestServerSearchCards:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "a:rebecca"},  # Unsupported syntax (artist)
+                    {"query": "m:{2}{U}"},  # Unsupported syntax (mana symbols)
                 )
 
                 assert "error" in result
@@ -281,7 +281,7 @@ class TestServerResponseFormat:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "a:rebecca"},  # Unsupported (artist)
+                    {"query": "m:{R}{R}"},  # Unsupported (mana symbols)
                 )
 
                 assert "error" in result

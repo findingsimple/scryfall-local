@@ -213,6 +213,22 @@ For planeswalker cards.
 
 **Note:** Price filters only match cards with available price data.
 
+### Artist
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `a:name` | Cards by artist (partial match) | `a:seb` |
+| `a:"full name"` | Cards by artist (quoted) | `a:"Rebecca Guay"` |
+| `artist:name` | Alias for a: | `artist:Terese` |
+
+### Year
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `year:YYYY` | Cards released in year | `year:2023` |
+| `year>=YYYY` | Released in or after year | `year>=2020` |
+| `year<YYYY` | Released before year | `year<2015` |
+
 ## Planned (Not Yet Supported)
 
 The following syntax is documented for future implementation:
@@ -221,8 +237,6 @@ The following syntax is documented for future implementation:
 
 | Feature | Syntax | Description |
 |---------|--------|-------------|
-| Artist | `a:"Rebecca Guay"` | Search by illustrator |
-| Year | `year:2023` | Release year |
 | Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |
 
 ### Medium Value

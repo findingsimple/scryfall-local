@@ -25,6 +25,8 @@ SUPPORTED_SYNTAX = [
     "power: pow:3, pow>=4, power<2",
     "toughness: tou:3, tou>=4, toughness<2",
     "loyalty: loy:3, loy>=4, loyalty<5 (planeswalkers)",
+    "artist: a:\"Rebecca Guay\", artist:Seb",
+    "year: year:2023, year>=2020, year<2015",
     "flavor text: ft:\"flavor text\" (search flavor text)",
     "collector number: cn:123, cn:1a (find specific printings)",
     "price: usd<1, usd>=10, eur<5",
@@ -202,6 +204,9 @@ TOKEN_PATTERNS = [
     (r'(?:loy|loyalty)(>=|<=|>|<|=|!=|:)(\d+)', 'LOYALTY'),
     (r'(?:cn|number)(>=|<=|>|<|=|!=|:)([a-zA-Z0-9]+)', 'COLLECTOR_NUMBER'),
     (r'(?:usd|eur|tix)(>=|<=|>|<|=|!=|:)(\d+(?:\.\d+)?)', 'PRICE'),
+    (r'(?:a|artist):"([^"]+)"', 'ARTIST_QUOTED'),
+    (r'(?:a|artist):([a-zA-Z][a-zA-Z0-9_-]*)', 'ARTIST'),
+    (r'year(>=|<=|>|<|=|!=|:)(\d{4})', 'YEAR'),
     # Boolean operators
     (r'\bOR\b', 'OR'),
     (r'-', 'NEGATION'),
@@ -293,9 +298,13 @@ class QueryParser:
                         operator = match.group(1)
                         value = float(match.group(2))
                         tokens.append((token_type, (currency, operator, value)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED'):
+                    elif token_type == 'YEAR':
+                        operator = match.group(1)
+                        value = int(match.group(2))
+                        tokens.append((token_type, (operator, value)))
+                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR'):
+                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
                         tokens.append((token_type, match.group(1)))
@@ -425,6 +434,8 @@ class QueryParser:
             'LOYALTY': 'loyalty',
             'COLLECTOR_NUMBER': 'collector_number',
             'PRICE': 'price',
+            'ARTIST': 'artist',
+            'YEAR': 'year',
             'EXACT_NAME': 'name_exact',
             'STRICT_NAME': 'name_strict',
             'PARTIAL_NAME': 'name_partial',
@@ -487,6 +498,16 @@ class QueryParser:
             # Normalize to title case to match Scryfall format ("Flying", "Deathtouch")
             return value.title()
 
+        if token_type == 'ARTIST':
+            return value
+
+        if token_type == 'YEAR':
+            operator, val = value
+            # Normalize : to =
+            if operator == ':':
+                operator = '='
+            return {"operator": operator, "value": val}
+
         if token_type in ('TYPE', 'ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
             return value
 
@@ -495,9 +516,6 @@ class QueryParser:
     def _check_unsupported(self, query: str) -> None:
         """Check for unsupported syntax and give helpful errors."""
         unsupported_patterns = {
-            r'\ba:': ("Artist filter", 'a:"Rebecca Guay"'),
-            r'\bartist:': ("Artist filter", "artist:name"),
-            r'\byear[:<>=]': ("Year filter", "year:2023"),
             r'\bm:\{': ("Mana symbol filter", "m:{2}{U}{U}"),
         }
 

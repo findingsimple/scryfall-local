@@ -658,6 +658,79 @@ class TestQueryParserStrictName:
         assert result.filters["colors"]["value"] == ["R"]
 
 
+class TestQueryParserArtist:
+    """Test artist filter parsing."""
+
+    def test_parse_artist_simple(self):
+        """Simple artist: a:seb."""
+        parser = QueryParser()
+        result = parser.parse("a:seb")
+
+        assert "artist" in result.filters
+        assert result.filters["artist"] == "seb"
+
+    def test_parse_artist_quoted(self):
+        """Quoted artist: a:"Rebecca Guay"."""
+        parser = QueryParser()
+        result = parser.parse('a:"Rebecca Guay"')
+
+        assert "artist" in result.filters
+        assert result.filters["artist"] == "Rebecca Guay"
+
+    def test_parse_artist_alias(self):
+        """Artist alias: artist:Terese."""
+        parser = QueryParser()
+        result = parser.parse("artist:Terese")
+
+        assert "artist" in result.filters
+        assert result.filters["artist"] == "Terese"
+
+    def test_parse_artist_with_filters(self):
+        """Artist with other filters: a:seb t:creature."""
+        parser = QueryParser()
+        result = parser.parse("a:seb t:creature")
+
+        assert result.filters["artist"] == "seb"
+        assert result.filters["type"] == ["creature"]
+
+
+class TestQueryParserYear:
+    """Test year filter parsing."""
+
+    def test_parse_year_exact(self):
+        """Exact year: year:2023."""
+        parser = QueryParser()
+        result = parser.parse("year:2023")
+
+        assert "year" in result.filters
+        assert result.filters["year"]["operator"] == "="
+        assert result.filters["year"]["value"] == 2023
+
+    def test_parse_year_greater_equal(self):
+        """Year >=: year>=2020."""
+        parser = QueryParser()
+        result = parser.parse("year>=2020")
+
+        assert result.filters["year"]["operator"] == ">="
+        assert result.filters["year"]["value"] == 2020
+
+    def test_parse_year_less_than(self):
+        """Year <: year<2015."""
+        parser = QueryParser()
+        result = parser.parse("year<2015")
+
+        assert result.filters["year"]["operator"] == "<"
+        assert result.filters["year"]["value"] == 2015
+
+    def test_parse_year_with_filters(self):
+        """Year with other filters: year:2023 r:mythic."""
+        parser = QueryParser()
+        result = parser.parse("year:2023 r:mythic")
+
+        assert result.filters["year"]["value"] == 2023
+        assert result.filters["rarity"] == "mythic"
+
+
 class TestQueryParserErrorHandling:
     """Test error handling and helpful messages."""
 
@@ -675,7 +748,7 @@ class TestQueryParserErrorHandling:
         parser = QueryParser()
 
         with pytest.raises(QueryError) as exc_info:
-            parser.parse("a:rebecca")  # Artist not supported yet
+            parser.parse("m:{2}{U}")  # Mana symbols not supported yet
 
         error = exc_info.value
         assert error.hint is not None
@@ -686,7 +759,7 @@ class TestQueryParserErrorHandling:
         parser = QueryParser()
 
         with pytest.raises(QueryError) as exc_info:
-            parser.parse("artist:rebecca")  # Not supported yet
+            parser.parse("m:{R}{R}")  # Mana symbols not supported yet
 
         error = exc_info.value
         assert isinstance(error.supported_syntax, list)

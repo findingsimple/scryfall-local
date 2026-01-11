@@ -695,6 +695,27 @@ class CardStore:
                 conditions.append("(keywords IS NULL OR LOWER(keywords) NOT LIKE ?)")
                 params.append(f'%"{keyword_not_values.lower()}"%')
 
+        # Artist filter
+        if "artist" in filters:
+            artist_value = filters["artist"]
+            # artist is stored in raw_data as a string
+            conditions.append("LOWER(json_extract(raw_data, '$.artist')) LIKE ?")
+            params.append(f"%{artist_value.lower()}%")
+
+        # Year filter (based on released_at date)
+        if "year" in filters:
+            year_filter = filters["year"]
+            value = year_filter.get("value")
+            operator = year_filter.get("operator", "=")
+            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
+            sql_op = op_map.get(operator, "=")
+            # released_at is stored as a date string like "2024-08-02"
+            # Extract year using substr (first 4 characters)
+            conditions.append(
+                f"CAST(substr(json_extract(raw_data, '$.released_at'), 1, 4) AS INTEGER) {sql_op} ?"
+            )
+            params.append(value)
+
         # Build and execute query
         if conditions:
             where_clause = " AND ".join(conditions)
