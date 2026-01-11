@@ -928,6 +928,88 @@ class TestQueryParserColorOperators:
         assert set(result.filters["color_identity"]["value"]) == {"R", "G"}
 
 
+class TestQueryParserNewFilters:
+    """Test new filter types: fo, produces, banned, block, watermark."""
+
+    def test_parse_full_oracle(self):
+        """Full oracle text: fo:flying (alias for o:)."""
+        parser = QueryParser()
+        result = parser.parse("fo:flying")
+
+        # fo: maps to oracle_text (same as o:)
+        assert result.filters["oracle_text"] == ["flying"]
+
+    def test_parse_full_oracle_quoted(self):
+        """Full oracle text with quotes: fo:\"enters the battlefield\"."""
+        parser = QueryParser()
+        result = parser.parse('fo:"enters the battlefield"')
+
+        assert result.filters["oracle_text"] == ["enters the battlefield"]
+
+    def test_parse_produces_single(self):
+        """Produces mana: produces:g."""
+        parser = QueryParser()
+        result = parser.parse("produces:g")
+
+        assert result.filters["produces"] == ["G"]
+
+    def test_parse_produces_multiple(self):
+        """Produces multiple colors: produces:wubrg."""
+        parser = QueryParser()
+        result = parser.parse("produces:wubrg")
+
+        assert set(result.filters["produces"]) == {"W", "U", "B", "R", "G"}
+
+    def test_parse_banned(self):
+        """Banned in format: banned:modern."""
+        parser = QueryParser()
+        result = parser.parse("banned:modern")
+
+        assert result.filters["banned"] == "modern"
+
+    def test_parse_block(self):
+        """Block filter: b:innistrad."""
+        parser = QueryParser()
+        result = parser.parse("b:innistrad")
+
+        assert result.filters["block"] == "innistrad"
+
+    def test_parse_block_alias(self):
+        """Block filter alias: block:zendikar."""
+        parser = QueryParser()
+        result = parser.parse("block:zendikar")
+
+        assert result.filters["block"] == "zendikar"
+
+    def test_parse_watermark(self):
+        """Watermark filter: wm:phyrexian."""
+        parser = QueryParser()
+        result = parser.parse("wm:phyrexian")
+
+        assert result.filters["watermark"] == "phyrexian"
+
+    def test_parse_watermark_alias(self):
+        """Watermark filter alias: watermark:selesnya."""
+        parser = QueryParser()
+        result = parser.parse("watermark:selesnya")
+
+        assert result.filters["watermark"] == "selesnya"
+
+    def test_parse_negated_banned(self):
+        """Negated banned: -banned:legacy."""
+        parser = QueryParser()
+        result = parser.parse("-banned:legacy")
+
+        assert result.filters["banned_not"] == "legacy"
+
+    def test_parse_negated_watermark(self):
+        """Negated watermark: -wm:dimir."""
+        parser = QueryParser()
+        result = parser.parse("-wm:dimir")
+
+        assert result.filters["watermark_not"] == "dimir"
+
+
 class TestQueryParserComplexQueries:
     """Test complex real-world queries."""
 

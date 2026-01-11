@@ -50,6 +50,46 @@ INVERTED_OPERATOR_MAP = {
     "<": ">=",
 }
 
+# Block to set code mapping (blocks were discontinued after Ixalan/Dominaria)
+# Note: Set codes are lowercase for case-insensitive matching
+BLOCK_MAP = {
+    # Original/early blocks
+    "ice age": ["ice", "all", "csp"],
+    "iceage": ["ice", "all", "csp"],
+    "mirage": ["mir", "vis", "wth"],
+    "tempest": ["tmp", "sth", "exo"],
+    "urza": ["usg", "ulg", "uds"],
+    "urzas": ["usg", "ulg", "uds"],
+    "masques": ["mmq", "nem", "pcy"],
+    "mercadian": ["mmq", "nem", "pcy"],
+    "invasion": ["inv", "pls", "apc"],
+    "odyssey": ["ody", "tor", "jud"],
+    "onslaught": ["ons", "lgn", "scg"],
+    "mirrodin": ["mrd", "dst", "5dn"],
+    "kamigawa": ["chk", "bok", "sok"],
+    "ravnica": ["rav", "gpt", "dis"],
+    "time spiral": ["tsp", "plc", "fut"],
+    "timespiral": ["tsp", "plc", "fut"],
+    "lorwyn": ["lrw", "mor"],
+    "shadowmoor": ["shm", "eve"],
+    "alara": ["ala", "con", "arb"],
+    "zendikar": ["zen", "wwk", "roe"],
+    "scars": ["som", "mbs", "nph"],
+    "innistrad": ["isd", "dka", "avr"],
+    "return to ravnica": ["rtr", "gtc", "dgm"],
+    "ravnicareturn": ["rtr", "gtc", "dgm"],
+    "theros": ["ths", "bng", "jou"],
+    "khans": ["ktk", "frf", "dtk"],
+    "tarkir": ["ktk", "frf", "dtk"],
+    "battle for zendikar": ["bfz", "ogw"],
+    "battleforzendikar": ["bfz", "ogw"],
+    "shadows": ["soi", "emn"],
+    "shadowsoverinnistrad": ["soi", "emn"],
+    "kaladesh": ["kld", "aer"],
+    "amonkhet": ["akh", "hou"],
+    "ixalan": ["xln", "rix"],
+}
+
 
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder that handles Decimal objects from ijson streaming parser."""
@@ -93,7 +133,7 @@ class CardStore:
             # Note: Column names are from a fixed allowlist, not user input
             _MIGRATION_COLUMNS = frozenset({
                 "keywords", "artist", "released_at", "loyalty",
-                "flavor_text", "collector_number"
+                "flavor_text", "collector_number", "watermark", "produced_mana"
             })
             migrations = [
                 ("keywords", "$.keywords"),
@@ -102,6 +142,8 @@ class CardStore:
                 ("loyalty", "$.loyalty"),
                 ("flavor_text", "$.flavor_text"),
                 ("collector_number", "$.collector_number"),
+                ("watermark", "$.watermark"),
+                ("produced_mana", "$.produced_mana"),
             ]
 
             for col_name, json_path in migrations:
@@ -140,6 +182,8 @@ class CardStore:
                 loyalty TEXT,  -- Planeswalker loyalty (can be "X" or number)
                 flavor_text TEXT,
                 collector_number TEXT,
+                watermark TEXT,  -- Guild/faction watermark (e.g., "selesnya", "phyrexian")
+                produced_mana TEXT,  -- JSON array of mana colors this card produces
                 image_uris TEXT,  -- JSON object
                 legalities TEXT,  -- JSON object
                 prices TEXT,  -- JSON object
@@ -232,8 +276,8 @@ class CardStore:
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, artist, released_at, loyalty, flavor_text, collector_number,
-            image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            watermark, produced_mana, image_uris, legalities, prices, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
@@ -271,6 +315,8 @@ class CardStore:
             card.get("loyalty"),
             card.get("flavor_text"),
             card.get("collector_number"),
+            card.get("watermark"),
+            json.dumps(card.get("produced_mana", []), cls=DecimalEncoder),
             json.dumps(card.get("image_uris", {}), cls=DecimalEncoder),
             json.dumps(card.get("legalities", {}), cls=DecimalEncoder),
             json.dumps(card.get("prices", {}), cls=DecimalEncoder),
@@ -302,7 +348,8 @@ class CardStore:
         """Convert database row to card dictionary."""
         card = dict(row)
         # Parse JSON fields
-        for field in ["colors", "color_identity", "keywords", "image_uris", "legalities", "prices"]:
+        for field in ["colors", "color_identity", "keywords", "produced_mana",
+                      "image_uris", "legalities", "prices"]:
             if card.get(field):
                 try:
                     card[field] = json.loads(card[field])
@@ -1020,6 +1067,78 @@ class CardStore:
             sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
             conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
             params.append(value)
+
+        # Banned in format filter (e.g., banned:modern)
+        if "banned" in filters:
+            format_name = filters["banned"].lower()
+            if format_name in VALID_FORMATS:
+                conditions.append(f"json_extract(legalities, '$.{format_name}') = 'banned'")
+            else:
+                # Invalid format returns empty results
+                conditions.append("1=0")
+
+        # Banned NOT filter (cards NOT banned in format)
+        if "banned_not" in filters:
+            format_name = filters["banned_not"].lower()
+            if format_name in VALID_FORMATS:
+                conditions.append(
+                    f"(json_extract(legalities, '$.{format_name}') IS NULL "
+                    f"OR json_extract(legalities, '$.{format_name}') != 'banned')"
+                )
+
+        # Produces mana filter (e.g., produces:g)
+        if "produces" in filters:
+            produced_colors = filters["produces"]
+            if isinstance(produced_colors, list):
+                for color in produced_colors:
+                    if color:  # Skip empty (colorless)
+                        conditions.append("produced_mana LIKE ?")
+                        params.append(f'%"{color}"%')
+                    else:
+                        # Colorless mana production - check for C in produced_mana
+                        conditions.append("produced_mana LIKE '%\"C\"%'")
+
+        # Produces NOT filter
+        if "produces_not" in filters:
+            produced_colors = filters["produces_not"]
+            if isinstance(produced_colors, list):
+                for color in produced_colors:
+                    if color:
+                        conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE ?)")
+                        params.append(f'%"{color}"%')
+
+        # Watermark filter (e.g., wm:phyrexian)
+        if "watermark" in filters:
+            watermark_value = filters["watermark"]
+            conditions.append("LOWER(watermark) = ?")
+            params.append(watermark_value.lower())
+
+        # Watermark NOT filter
+        if "watermark_not" in filters:
+            watermark_not_value = filters["watermark_not"]
+            conditions.append("(watermark IS NULL OR LOWER(watermark) != ?)")
+            params.append(watermark_not_value.lower())
+
+        # Block filter (e.g., b:innistrad)
+        if "block" in filters:
+            block_name = filters["block"].lower()
+            block_sets = BLOCK_MAP.get(block_name, [])
+            if block_sets:
+                placeholders = ", ".join("?" for _ in block_sets)
+                conditions.append(f"LOWER(set_code) IN ({placeholders})")
+                params.extend(block_sets)
+            else:
+                # Unknown block returns empty results
+                conditions.append("1=0")
+
+        # Block NOT filter
+        if "block_not" in filters:
+            block_name = filters["block_not"].lower()
+            block_sets = BLOCK_MAP.get(block_name, [])
+            if block_sets:
+                placeholders = ", ".join("?" for _ in block_sets)
+                conditions.append(f"LOWER(set_code) NOT IN ({placeholders})")
+                params.extend(block_sets)
 
         return conditions, params
 

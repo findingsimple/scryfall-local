@@ -980,6 +980,125 @@ class TestCardStoreInvalidFormat:
             store.close()
 
 
+class TestCardStoreNewFilters:
+    """Test new filter types: banned, produces, watermark, block."""
+
+    def test_banned_filter(self):
+        """banned:modern should find cards banned in modern."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Legal Card", "legalities": {"modern": "legal"}},
+                {"id": "2", "name": "Banned Card", "legalities": {"modern": "banned"}},
+                {"id": "3", "name": "Not Legal", "legalities": {"modern": "not_legal"}},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"banned": "modern"},
+                raw_query="banned:modern",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Banned Card"
+
+            store.close()
+
+    def test_produces_filter(self):
+        """produces:g should find cards that produce green mana."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Forest", "produced_mana": ["G"]},
+                {"id": "2", "name": "Mountain", "produced_mana": ["R"]},
+                {"id": "3", "name": "Dual Land", "produced_mana": ["G", "W"]},
+                {"id": "4", "name": "Sol Ring", "produced_mana": ["C"]},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"produces": ["G"]},
+                raw_query="produces:g",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Forest" in names
+            assert "Dual Land" in names
+            assert "Mountain" not in names
+            assert "Sol Ring" not in names
+
+            store.close()
+
+    def test_watermark_filter(self):
+        """wm:selesnya should find cards with selesnya watermark."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Selesnya Card", "watermark": "selesnya"},
+                {"id": "2", "name": "Dimir Card", "watermark": "dimir"},
+                {"id": "3", "name": "No Watermark", "watermark": None},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"watermark": "selesnya"},
+                raw_query="wm:selesnya",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Selesnya Card"
+
+            store.close()
+
+    def test_block_filter(self):
+        """b:innistrad should find cards from Innistrad block sets."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Innistrad Card", "set": "isd"},
+                {"id": "2", "name": "Dark Ascension Card", "set": "dka"},
+                {"id": "3", "name": "Avacyn Card", "set": "avr"},
+                {"id": "4", "name": "M19 Card", "set": "m19"},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"block": "innistrad"},
+                raw_query="b:innistrad",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Innistrad Card" in names
+            assert "Dark Ascension Card" in names
+            assert "Avacyn Card" in names
+            assert "M19 Card" not in names
+
+            store.close()
+
+    def test_unknown_block_returns_empty(self):
+        """Unknown block should return empty results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Some Card", "set": "m19"},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"block": "notablock"},
+                raw_query="b:notablock",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) == 0
+
+            store.close()
+
+
 class TestCardStoreSecurity:
     """Test security measures."""
 

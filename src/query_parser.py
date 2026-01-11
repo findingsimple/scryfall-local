@@ -206,9 +206,20 @@ TOKEN_PATTERNS = [
     (r'(?:o|oracle|text):([a-zA-Z]+)', 'ORACLE'),
     (r'(?:ft|flavor):"([^"]+)"', 'FLAVOR_QUOTED'),
     (r'(?:ft|flavor):([a-zA-Z]+)', 'FLAVOR'),
+    # Full oracle text (includes reminder text) - fo: is alias for o: since oracle_text already has reminder text
+    (r'(?:fo|fulloracle):"([^"]+)"', 'FULL_ORACLE_QUOTED'),
+    (r'(?:fo|fulloracle):([a-zA-Z]+)', 'FULL_ORACLE'),
     (r'(?:set|e|s|edition):([a-zA-Z0-9]+)', 'SET'),
     (r'(?:r|rarity):([a-zA-Z]+)', 'RARITY'),
     (r'(?:f|format|legal|legality):([a-zA-Z]+)', 'FORMAT'),
+    # Banned in format (e.g., banned:modern)
+    (r'banned:([a-zA-Z]+)', 'BANNED'),
+    # Block filter (e.g., b:innistrad, block:zendikar)
+    (r'(?:b|block):([a-zA-Z]+)', 'BLOCK'),
+    # Produces mana filter (e.g., produces:g, produces:wubrg)
+    (r'produces:([a-zA-Z]+)', 'PRODUCES'),
+    # Watermark filter (e.g., wm:phyrexian, watermark:selesnya)
+    (r'(?:wm|watermark):([a-zA-Z]+)', 'WATERMARK'),
     (r'(?:kw|keyword|keywords):"([^"]+)"', 'KEYWORD_QUOTED'),
     (r'(?:kw|keyword|keywords):([a-zA-Z]+)', 'KEYWORD'),
     (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
@@ -323,9 +334,10 @@ class QueryParser:
                         operator = match.group(1)
                         mana_str = match.group(2)
                         tokens.append((token_type, (operator, mana_str)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED'):
+                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST'):
+                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
+                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
                         tokens.append((token_type, match.group(1)))
@@ -464,10 +476,15 @@ class QueryParser:
             'CMC': 'cmc',
             'TYPE': 'type',
             'ORACLE': 'oracle_text',
+            'FULL_ORACLE': 'oracle_text',  # fo: is alias for o: (oracle_text includes reminder text)
             'FLAVOR': 'flavor_text',
             'SET': 'set',
             'RARITY': 'rarity',
             'FORMAT': 'format',
+            'BANNED': 'banned',
+            'BLOCK': 'block',
+            'PRODUCES': 'produces',
+            'WATERMARK': 'watermark',
             'KEYWORD': 'keyword',
             'POWER': 'power',
             'TOUGHNESS': 'toughness',
@@ -555,8 +572,24 @@ class QueryParser:
             # m:{R} means contains {R}, m={R} means exactly {R}
             return {"operator": operator, "value": mana_str}
 
-        if token_type in ('TYPE', 'ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
+        if token_type in ('TYPE', 'ORACLE', 'FULL_ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
             return value
+
+        if token_type == 'BANNED':
+            # Format name where the card is banned
+            return value.lower()
+
+        if token_type == 'BLOCK':
+            # Block name (e.g., innistrad, zendikar)
+            return value.lower()
+
+        if token_type == 'PRODUCES':
+            # Parse color values for mana production (e.g., "g", "wubrg")
+            return _parse_color_value(value)
+
+        if token_type == 'WATERMARK':
+            # Watermark name (e.g., phyrexian, selesnya)
+            return value.lower()
 
         return None
 

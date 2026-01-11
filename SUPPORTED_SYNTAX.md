@@ -288,21 +288,51 @@ For planeswalker cards.
 | `year>=YYYY` | Released in or after year | `year>=2020` |
 | `year<YYYY` | Released before year | `year<2015` |
 
-## Planned (Not Yet Supported)
+### Full Oracle Text
 
-The following syntax is documented for future implementation:
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `fo:text` | Search oracle text (alias for o:) | `fo:flying` |
+| `fo:"phrase"` | Search oracle text with phrase | `fo:"enters the battlefield"` |
 
-### Medium Value
+**Note:** `fo:` is an alias for `o:` since our oracle_text field already includes reminder text.
 
-| Feature | Syntax | Description |
-|---------|--------|-------------|
-| Full oracle text | `fo:"reminder"` | Includes reminder text |
-| Produces mana | `produces:g` | Cards that produce specific mana |
-| Block | `b:innistrad` | Set block filtering |
-| Banned in format | `banned:modern` | Cards banned in format |
-| Watermark | `wm:phyrexian` | Faction/guild watermarks |
+### Produces Mana
 
-### Not Planned
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `produces:color` | Cards that produce this mana | `produces:g` |
+| `produces:colors` | Cards that produce all colors | `produces:wubrg` |
+
+### Banned in Format
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `banned:format` | Cards banned in format | `banned:modern` |
+
+Supported formats: standard, future, historic, timeless, gladiator, pioneer, modern, legacy, pauper, vintage, penny, commander, oathbreaker, standardbrawl, brawl, alchemy, paupercommander, duel, oldschool, premodern, predh.
+
+### Block
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `b:block` | Cards from a block | `b:innistrad` |
+| `block:block` | Alias for b: | `block:zendikar` |
+
+Supported blocks: ice age, mirage, tempest, urza, masques, invasion, odyssey, onslaught, mirrodin, kamigawa, ravnica, time spiral, lorwyn, shadowmoor, alara, zendikar, scars, innistrad, return to ravnica, theros, khans, tarkir, battle for zendikar, shadows, kaladesh, amonkhet, ixalan.
+
+**Note:** Blocks were discontinued by Wizards after Ixalan (2017).
+
+### Watermark
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `wm:name` | Cards with watermark | `wm:phyrexian` |
+| `watermark:name` | Alias for wm: | `watermark:selesnya` |
+
+Common watermarks: phyrexian, mirran, selesnya, dimir, golgari, boros, orzhov, izzet, gruul, azorius, simic, rakdos, riveteers, obscura, maestros, cabaretti, brokers.
+
+## Not Planned
 
 The following features are intentionally out of scope for this project:
 
