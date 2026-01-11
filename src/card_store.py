@@ -135,6 +135,10 @@ class CardStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artist ON cards(artist)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_released_at ON cards(released_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_oracle_id ON cards(oracle_id)")
+        # Color indexes help with exact matches (e.g., colorless = '[]')
+        # Note: LIKE '%"U"%' queries can't use B-tree indexes efficiently
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_colors ON cards(colors)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_color_identity ON cards(color_identity)")
 
         # FTS5 virtual table for oracle text search
         cursor.execute("""
