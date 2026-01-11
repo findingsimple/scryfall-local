@@ -170,19 +170,19 @@ class ScryfallServer:
             Tool(
                 name="get_cards_batch",
                 description="Get multiple Magic: The Gathering cards by name or ID in a single call. "
-                "More efficient than multiple get_card calls.",
+                "More efficient than multiple get_card calls. Limited to 50 cards per request.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "names": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of exact card names",
+                            "description": "List of exact card names (max 50 combined with ids)",
                         },
                         "ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of Scryfall card IDs",
+                            "description": "List of Scryfall card IDs (max 50 combined with names)",
                         },
                     },
                 },
@@ -318,34 +318,47 @@ class ScryfallServer:
             arguments: {"names": [...]} or {"ids": [...]}
 
         Returns:
-            {"found": [...], "not_found": [...]}
+            {"found": [...], "not_found": [...], "truncated": bool}
         """
         store = self._get_store()
+        batch_limit = 50
 
         names = arguments.get("names", [])
         ids = arguments.get("ids", [])
 
+        total_requested = len(names) + len(ids)
+        truncated = total_requested > batch_limit
+
         found = []
         not_found = []
+        remaining = batch_limit
 
-        for name in names[:50]:  # Limit to 50
+        for name in names[:remaining]:
             card = store.get_card_by_name(name)
             if card:
                 found.append(card)
             else:
                 not_found.append(name)
 
-        for card_id in ids[:50]:
+        remaining -= min(len(names), remaining)
+
+        for card_id in ids[:remaining]:
             card = store.get_card_by_id(card_id)
             if card:
                 found.append(card)
             else:
                 not_found.append(card_id)
 
-        return {
+        result: dict[str, Any] = {
             "found": found,
             "not_found": not_found,
         }
+
+        if truncated:
+            result["truncated"] = True
+            result["truncated_count"] = total_requested - batch_limit
+
+        return result
 
     async def _random_card(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Get a random card.

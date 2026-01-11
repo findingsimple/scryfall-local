@@ -242,6 +242,38 @@ class TestServerGetCardsBatch:
                 assert len(result["not_found"]) == 1
                 assert "Nonexistent Card" in result["not_found"]
 
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_truncation(self, sample_cards: list[dict[str, Any]]):
+        """Should indicate when input is truncated due to batch limit."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Request more than 50 cards (the batch limit)
+                names = [f"Card {i}" for i in range(60)]
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"names": names},
+                )
+
+                assert result.get("truncated") is True
+                assert result.get("truncated_count") == 10
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_no_truncation(self, sample_cards: list[dict[str, Any]]):
+        """Should not include truncated field when under limit."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"names": ["Lightning Bolt"]},
+                )
+
+                assert "truncated" not in result
+
 
 class TestServerRandomCard:
     """Test random_card tool."""
