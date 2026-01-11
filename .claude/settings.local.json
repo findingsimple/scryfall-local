@@ -33,7 +33,8 @@
       "Bash(claude mcp --help:*)",
       "mcp__scryfall-local__random_card",
       "mcp__scryfall-local__refresh_data",
-      "Bash(timeout 30 python3:*)"
+      "Bash(timeout 30 python3:*)",
+      "Bash(xxd:*)"
     ]
   }
 }
