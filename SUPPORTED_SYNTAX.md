@@ -21,6 +21,8 @@ This document describes the query syntax supported by the Scryfall Local MCP ser
 | `c:multicolor` | Multiple color symbols | `c:urg` (blue, red, green) |
 | `c>=colors` | At least these colors | `c>=rg` (red and green, possibly more) |
 | `c<=colors` | At most these colors | `c<=w` (white or colorless only) |
+| `c>colors` | Strict superset (has all + more) | `c>rg` (RG plus at least one more color) |
+| `c<colors` | Strict subset (fewer colors) | `c<rg` (only R, only G, or colorless) |
 
 **Color Codes:**
 - `w` or `white` - White
@@ -38,7 +40,10 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 |--------|-------------|---------|
 | `id:colors` | Cards with this identity | `id:rg`, `id:wubrg` |
 | `id:name` | Named color combination | `id:esper`, `id:gruul` |
+| `id>=colors` | At least these colors in identity | `id>=rg` (has R and G, possibly more) |
 | `id<=colors` | Identity subset (for Commander) | `id<=rg` (fits in Gruul deck) |
+| `id>colors` | Strict superset identity | `id>rg` (has RG plus at least one more) |
+| `id<colors` | Strict subset identity | `id<rg` (only R, only G, or colorless) |
 | `identity:` | Alias for id: | `identity:boros` |
 | `ci:` | Alias for id: | `ci:ub` |
 
@@ -314,12 +319,8 @@ If you use unsupported syntax, you'll receive an error like:
 
 ```json
 {
-  "error": "Format legality is not yet supported",
-  "hint": "'f:standard, f:modern' syntax will be added in a future version",
-  "supported_syntax": [
-    "name search: \"Lightning Bolt\" (exact) or bolt (partial)",
-    "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
-    ...
-  ]
+  "error": "Unbalanced parentheses: missing closing ')'",
+  "hint": "Check that all opening parentheses have matching closing parentheses",
+  "supported_syntax": "Supports: name, colors (c:blue), mana value (cmc:3), ..."
 }
 ```

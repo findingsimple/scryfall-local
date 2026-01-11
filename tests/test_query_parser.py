@@ -26,8 +26,8 @@ class TestQueryParserBasicName:
         parser = QueryParser()
         result = parser.parse("lightning bolt")
 
-        # Two separate partial name filters ANDed together
-        assert "name_partial" in result.filters or len(result.conditions) >= 2
+        # Parsed as a partial name filter
+        assert "name_partial" in result.filters
 
 
 class TestQueryParserColors:
@@ -870,6 +870,62 @@ class TestQueryParserErrorHandling:
         error = exc_info.value
         # Error should have a message
         assert str(error)
+
+    def test_unbalanced_parentheses_raises_error(self):
+        """Unbalanced parentheses should raise QueryError with helpful message."""
+        parser = QueryParser()
+
+        with pytest.raises(QueryError) as exc_info:
+            parser.parse("(c:blue")  # Missing closing paren
+
+        error = exc_info.value
+        assert "parentheses" in str(error).lower()
+        assert "missing" in str(error).lower() or "unbalanced" in str(error).lower()
+
+    def test_unbalanced_parentheses_nested(self):
+        """Nested unbalanced parentheses should raise QueryError."""
+        parser = QueryParser()
+
+        with pytest.raises(QueryError) as exc_info:
+            parser.parse("((c:blue OR c:red)")  # Missing one closing paren
+
+        assert "parentheses" in str(exc_info.value).lower()
+
+
+class TestQueryParserColorOperators:
+    """Test color greater-than and less-than operators."""
+
+    def test_parse_color_greater_than(self):
+        """Color > operator: c>rg means has R and G plus at least one more."""
+        parser = QueryParser()
+        result = parser.parse("c>rg")
+
+        assert result.filters["colors"]["operator"] == ">"
+        assert set(result.filters["colors"]["value"]) == {"R", "G"}
+
+    def test_parse_color_less_than(self):
+        """Color < operator: c<rg means strict subset of {R, G}."""
+        parser = QueryParser()
+        result = parser.parse("c<rg")
+
+        assert result.filters["colors"]["operator"] == "<"
+        assert set(result.filters["colors"]["value"]) == {"R", "G"}
+
+    def test_parse_identity_greater_than(self):
+        """Color identity > operator: id>rg."""
+        parser = QueryParser()
+        result = parser.parse("id>rg")
+
+        assert result.filters["color_identity"]["operator"] == ">"
+        assert set(result.filters["color_identity"]["value"]) == {"R", "G"}
+
+    def test_parse_identity_less_than(self):
+        """Color identity < operator: id<rg."""
+        parser = QueryParser()
+        result = parser.parse("id<rg")
+
+        assert result.filters["color_identity"]["operator"] == "<"
+        assert set(result.filters["color_identity"]["value"]) == {"R", "G"}
 
 
 class TestQueryParserComplexQueries:

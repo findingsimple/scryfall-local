@@ -379,6 +379,14 @@ class QueryParser:
                         depth -= 1
                     j += 1
 
+                # Check for unbalanced parentheses
+                if depth > 0:
+                    raise QueryError(
+                        "Unbalanced parentheses: missing closing ')'",
+                        hint="Check that all opening parentheses have matching closing parentheses",
+                        supported_syntax=SYNTAX_SUMMARY,
+                    )
+
                 # Parse inner tokens
                 inner_tokens = tokens[i+1:j-1]
                 inner_result = self._parse_tokens(inner_tokens, raw_query)

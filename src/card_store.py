@@ -39,6 +39,17 @@ OPERATOR_MAP = {
     "!=": "!=",
 }
 
+# Inverted operators for NOT filters (e.g., -cmc>=5 means cmc<5)
+INVERTED_OPERATOR_MAP = {
+    "=": "!=",
+    ":": "!=",
+    "!=": "=",
+    ">=": "<",
+    "<=": ">",
+    ">": "<=",
+    "<": ">=",
+}
+
 
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder that handles Decimal objects from ijson streaming parser."""
@@ -554,12 +565,49 @@ class CardStore:
         if "colors" in filters:
             color_filter = filters["colors"]
             colors = color_filter.get("value", [])
+            operator = color_filter.get("operator", ":")
             if not colors:
                 conditions.append("colors = '[]'")
-            else:
+            elif operator in (":", "=", ">="):
+                # Has at least these colors
                 for c in colors:
                     conditions.append("colors LIKE ?")
                     params.append(f'%"{c}"%')
+            elif operator == "<=":
+                # Has at most these colors (subset)
+                all_colors = {"W", "U", "B", "R", "G"}
+                allowed_colors = set(colors)
+                disallowed_colors = all_colors - allowed_colors
+                if disallowed_colors:
+                    for c in disallowed_colors:
+                        conditions.append("colors NOT LIKE ?")
+                        params.append(f'%"{c}"%')
+            elif operator == ">":
+                # Has more colors than specified (superset, not equal)
+                # Must have all specified colors plus at least one more
+                for c in colors:
+                    conditions.append("colors LIKE ?")
+                    params.append(f'%"{c}"%')
+                all_colors = {"W", "U", "B", "R", "G"}
+                other_colors = all_colors - set(colors)
+                if other_colors:
+                    # Must have at least one color not in the specified set
+                    or_conditions = " OR ".join(f"colors LIKE '%\"{c}\"%'" for c in other_colors)
+                    conditions.append(f"({or_conditions})")
+            elif operator == "<":
+                # Has fewer colors than specified (strict subset)
+                # Must not have all the specified colors, and must not have any outside
+                all_colors = {"W", "U", "B", "R", "G"}
+                disallowed_colors = all_colors - set(colors)
+                # Can't have colors outside the specified set
+                for c in disallowed_colors:
+                    conditions.append("colors NOT LIKE ?")
+                    params.append(f'%"{c}"%')
+                # Must not have ALL of the specified colors (strict subset)
+                if len(colors) > 1:
+                    # At least one of the specified colors must be missing
+                    not_all = " OR ".join(f"colors NOT LIKE '%\"{c}\"%'" for c in colors)
+                    conditions.append(f"({not_all})")
 
         # Color NOT filter
         if "colors_not" in filters:
@@ -580,15 +628,13 @@ class CardStore:
             operator = identity_filter.get("operator", ":")
             if not colors:
                 conditions.append("color_identity = '[]'")
-            elif operator in (":", "="):
-                for c in colors:
-                    conditions.append("color_identity LIKE ?")
-                    params.append(f'%"{c}"%')
-            elif operator == ">=":
+            elif operator in (":", "=", ">="):
+                # Has at least these colors in identity
                 for c in colors:
                     conditions.append("color_identity LIKE ?")
                     params.append(f'%"{c}"%')
             elif operator == "<=":
+                # Identity is subset of specified colors
                 all_colors = {"W", "U", "B", "R", "G"}
                 allowed_colors = set(colors)
                 disallowed_colors = all_colors - allowed_colors
@@ -596,6 +642,26 @@ class CardStore:
                     for c in disallowed_colors:
                         conditions.append("color_identity NOT LIKE ?")
                         params.append(f'%"{c}"%')
+            elif operator == ">":
+                # Identity is strict superset (has all specified plus more)
+                for c in colors:
+                    conditions.append("color_identity LIKE ?")
+                    params.append(f'%"{c}"%')
+                all_colors = {"W", "U", "B", "R", "G"}
+                other_colors = all_colors - set(colors)
+                if other_colors:
+                    or_conditions = " OR ".join(f"color_identity LIKE '%\"{c}\"%'" for c in other_colors)
+                    conditions.append(f"({or_conditions})")
+            elif operator == "<":
+                # Identity is strict subset (fewer colors than specified)
+                all_colors = {"W", "U", "B", "R", "G"}
+                disallowed_colors = all_colors - set(colors)
+                for c in disallowed_colors:
+                    conditions.append("color_identity NOT LIKE ?")
+                    params.append(f'%"{c}"%')
+                if len(colors) > 1:
+                    not_all = " OR ".join(f"color_identity NOT LIKE '%\"{c}\"%'" for c in colors)
+                    conditions.append(f"({not_all})")
 
         # Color identity NOT filter
         if "color_identity_not" in filters:
@@ -618,11 +684,13 @@ class CardStore:
             conditions.append(f"cmc {sql_op} ?")
             params.append(value)
 
-        # CMC NOT filter
+        # CMC NOT filter (inverts the operator: -cmc>=5 means cmc<5)
         if "cmc_not" in filters:
             cmc_not_filter = filters["cmc_not"]
             value = cmc_not_filter.get("value", 0)
-            conditions.append("cmc != ?")
+            operator = cmc_not_filter.get("operator", "=")
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+            conditions.append(f"cmc {sql_op} ?")
             params.append(value)
 
         # Mana cost filter (e.g., m:{R}{R}, mana:{2}{U}{U})
@@ -745,6 +813,9 @@ class CardStore:
                     f"(json_extract(legalities, '$.{format_name}') = 'legal' "
                     f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
                 )
+            else:
+                # Invalid format returns empty results
+                conditions.append("1=0")
 
         # Format NOT filter (cards NOT legal in format)
         if "format_not" in filters:
@@ -755,6 +826,9 @@ class CardStore:
                     f"OR (json_extract(legalities, '$.{format_name}') != 'legal' "
                     f"AND json_extract(legalities, '$.{format_name}') != 'restricted'))"
                 )
+            else:
+                # Invalid format_not matches all cards (no cards are legal in invalid format)
+                pass
 
         # Power filter
         if "power" in filters:
@@ -764,6 +838,18 @@ class CardStore:
             sql_op = OPERATOR_MAP.get(operator, "=")
             if value == "*":
                 conditions.append("power = '*'")
+            else:
+                conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
+                params.append(value)
+
+        # Power NOT filter
+        if "power_not" in filters:
+            power_not_filter = filters["power_not"]
+            value = power_not_filter.get("value")
+            operator = power_not_filter.get("operator", "=")
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+            if value == "*":
+                conditions.append("power != '*'")
             else:
                 conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
                 params.append(value)
@@ -780,12 +866,33 @@ class CardStore:
                 conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
                 params.append(value)
 
+        # Toughness NOT filter
+        if "toughness_not" in filters:
+            toughness_not_filter = filters["toughness_not"]
+            value = toughness_not_filter.get("value")
+            operator = toughness_not_filter.get("operator", "=")
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+            if value == "*":
+                conditions.append("toughness != '*'")
+            else:
+                conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
+                params.append(value)
+
         # Loyalty filter
         if "loyalty" in filters:
             loyalty_filter = filters["loyalty"]
             value = loyalty_filter.get("value")
             operator = loyalty_filter.get("operator", "=")
             sql_op = OPERATOR_MAP.get(operator, "=")
+            conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
+            params.append(value)
+
+        # Loyalty NOT filter
+        if "loyalty_not" in filters:
+            loyalty_not_filter = filters["loyalty_not"]
+            value = loyalty_not_filter.get("value")
+            operator = loyalty_not_filter.get("operator", "=")
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
             conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
             params.append(value)
 
@@ -806,6 +913,19 @@ class CardStore:
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
                 params.append(int(value) if str(value).isdigit() else value)
 
+        # Collector number NOT filter
+        if "collector_number_not" in filters:
+            cn_not_filter = filters["collector_number_not"]
+            value = cn_not_filter.get("value")
+            operator = cn_not_filter.get("operator", "=")
+            if operator == "=":
+                conditions.append("collector_number != ?")
+                params.append(str(value))
+            else:
+                sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+                conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
+                params.append(int(value) if str(value).isdigit() else value)
+
         # Price filter
         if "price" in filters:
             price_filter = filters["price"]
@@ -814,6 +934,19 @@ class CardStore:
             operator = price_filter.get("operator", "=")
             if currency in VALID_CURRENCIES:
                 sql_op = OPERATOR_MAP.get(operator, "=")
+                conditions.append(
+                    f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
+                )
+                params.append(value)
+
+        # Price NOT filter
+        if "price_not" in filters:
+            price_not_filter = filters["price_not"]
+            currency = price_not_filter.get("currency", "usd").lower()
+            value = price_not_filter.get("value")
+            operator = price_not_filter.get("operator", "=")
+            if currency in VALID_CURRENCIES:
+                sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
                 conditions.append(
                     f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
                 )
@@ -847,12 +980,27 @@ class CardStore:
             conditions.append("LOWER(artist) LIKE ?")
             params.append(f"%{artist_value.lower()}%")
 
+        # Artist NOT filter
+        if "artist_not" in filters:
+            artist_not_value = filters["artist_not"]
+            conditions.append("(artist IS NULL OR LOWER(artist) NOT LIKE ?)")
+            params.append(f"%{artist_not_value.lower()}%")
+
         # Year filter
         if "year" in filters:
             year_filter = filters["year"]
             value = year_filter.get("value")
             operator = year_filter.get("operator", "=")
             sql_op = OPERATOR_MAP.get(operator, "=")
+            conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
+            params.append(value)
+
+        # Year NOT filter
+        if "year_not" in filters:
+            year_not_filter = filters["year_not"]
+            value = year_not_filter.get("value")
+            operator = year_not_filter.get("operator", "=")
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
             conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
             params.append(value)
 

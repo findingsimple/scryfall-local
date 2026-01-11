@@ -786,6 +786,188 @@ class TestCardStoreNegationFilters:
             store.close()
 
 
+class TestCardStoreColorOperators:
+    """Test color > and < operators."""
+
+    def test_color_greater_than_operator(self):
+        """c>rg should find cards with R and G plus at least one more color."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Mono Red", "colors": ["R"], "color_identity": ["R"]},
+                {"id": "2", "name": "Gruul", "colors": ["R", "G"], "color_identity": ["R", "G"]},
+                {"id": "3", "name": "Jund", "colors": ["B", "R", "G"], "color_identity": ["B", "R", "G"]},
+                {"id": "4", "name": "Five Color", "colors": ["W", "U", "B", "R", "G"], "color_identity": ["W", "U", "B", "R", "G"]},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": ">", "value": ["R", "G"]}},
+                raw_query="c>rg",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Jund" in names
+            assert "Five Color" in names
+            assert "Gruul" not in names  # Exactly RG, not more
+            assert "Mono Red" not in names
+
+            store.close()
+
+    def test_color_less_than_operator(self):
+        """c<rg should find cards with strict subset of {R, G}."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Mono Red", "colors": ["R"], "color_identity": ["R"]},
+                {"id": "2", "name": "Mono Green", "colors": ["G"], "color_identity": ["G"]},
+                {"id": "3", "name": "Colorless", "colors": [], "color_identity": []},
+                {"id": "4", "name": "Gruul", "colors": ["R", "G"], "color_identity": ["R", "G"]},
+                {"id": "5", "name": "Jund", "colors": ["B", "R", "G"], "color_identity": ["B", "R", "G"]},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": "<", "value": ["R", "G"]}},
+                raw_query="c<rg",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Mono Red" in names
+            assert "Mono Green" in names
+            assert "Colorless" in names
+            assert "Gruul" not in names  # Exactly RG, not less
+            assert "Jund" not in names
+
+            store.close()
+
+    def test_identity_greater_than_operator(self):
+        """id>rg should find cards with RG identity plus at least one more."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Gruul", "colors": ["R", "G"], "color_identity": ["R", "G"]},
+                {"id": "2", "name": "Jund", "colors": ["B", "R", "G"], "color_identity": ["B", "R", "G"]},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"color_identity": {"operator": ">", "value": ["R", "G"]}},
+                raw_query="id>rg",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Jund" in names
+            assert "Gruul" not in names
+
+            store.close()
+
+
+class TestCardStoreInvertedOperators:
+    """Test inverted operators for NOT filters."""
+
+    def test_cmc_not_with_greater_equal(self):
+        """-cmc>=5 should find cards with cmc < 5 (inverted operator)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Low Cost", "cmc": 2},
+                {"id": "2", "name": "Medium Cost", "cmc": 4},
+                {"id": "3", "name": "High Cost", "cmc": 5},
+                {"id": "4", "name": "Very High", "cmc": 7},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"cmc_not": {"operator": ">=", "value": 5}},
+                raw_query="-cmc>=5",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Low Cost" in names
+            assert "Medium Cost" in names
+            assert "High Cost" not in names
+            assert "Very High" not in names
+
+            store.close()
+
+    def test_power_not_filter(self):
+        """-pow:3 should exclude cards with power 3."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Small", "power": "2", "type_line": "Creature"},
+                {"id": "2", "name": "Medium", "power": "3", "type_line": "Creature"},
+                {"id": "3", "name": "Large", "power": "4", "type_line": "Creature"},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"power_not": {"operator": "=", "value": 3}},
+                raw_query="-pow:3",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Small" in names
+            assert "Large" in names
+            assert "Medium" not in names
+
+            store.close()
+
+    def test_year_not_filter(self):
+        """-year:2023 should exclude cards from 2023."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Old Card", "released_at": "2020-01-01"},
+                {"id": "2", "name": "New Card", "released_at": "2023-06-15"},
+                {"id": "3", "name": "Newer Card", "released_at": "2024-01-01"},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"year_not": {"operator": "=", "value": 2023}},
+                raw_query="-year:2023",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Old Card" in names
+            assert "Newer Card" in names
+            assert "New Card" not in names
+
+            store.close()
+
+
+class TestCardStoreInvalidFormat:
+    """Test invalid format handling."""
+
+    def test_invalid_format_returns_empty(self):
+        """f:notaformat should return empty results, not all cards."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Card 1", "legalities": {"standard": "legal"}},
+                {"id": "2", "name": "Card 2", "legalities": {"modern": "legal"}},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"format": "notaformat"},
+                raw_query="f:notaformat",
+            )
+            results = store.execute_query(parsed)
+
+            assert len(results) == 0
+
+            store.close()
+
+
 class TestCardStoreSecurity:
     """Test security measures."""
 

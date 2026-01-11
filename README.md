@@ -44,6 +44,23 @@ Replace `/path/to/scryfall-local` with the actual path to this repository.
 - After adding, restart Claude Code for the server to be available
 - Verify the server is connected with `claude mcp list`
 
+### Adding via Project Configuration
+
+Alternatively, add this snippet to your project's `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "scryfall-local": {
+      "command": "/path/to/scryfall-local/.venv/bin/python",
+      "args": ["-m", "src.server"]
+    }
+  }
+}
+```
+
+Or to your user settings at `~/.claude/settings.json` to make it available across all projects.
+
 ### Running the Server Manually (Development/Testing)
 
 For development or testing outside of Claude Code:
@@ -173,8 +190,8 @@ See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 
 **Supported (19 filter types):**
 - Name: `"Lightning Bolt"` (exact), `!"Lightning Bolt"` (strict), `bolt` (partial)
-- Colors: `c:blue`, `c:urg`, `c>=rg`, `c<=w`
-- Color Identity: `id:esper`, `ci:rg`, `identity:gruul`
+- Colors: `c:blue`, `c:urg`, `c>=rg`, `c<=w`, `c>rg`, `c<rg`
+- Color Identity: `id:esper`, `ci:rg`, `id<=rg`, `id>rg`
 - Mana Value: `cmc:3`, `cmc>=5`, `mv<2`
 - Type: `t:creature`, `t:"legendary creature"`
 - Oracle Text: `o:flying`, `o:"enters the battlefield"`
