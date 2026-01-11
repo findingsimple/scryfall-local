@@ -21,12 +21,13 @@ def format_size(bytes_size: int) -> str:
     return f"{bytes_size:.1f} TB"
 
 
-def print_progress_bar(
-    downloaded: int,
-    total: int,
-    bar_length: int = 40,
-) -> None:
-    """Print a progress bar to stdout."""
+def print_progress_bar(downloaded: int, total: int) -> None:
+    """Print a progress bar to stdout.
+
+    Matches the Callable[[int, int], None] signature expected by
+    DataManager.download_bulk_data progress_callback parameter.
+    """
+    bar_length = 40
     if total == 0:
         return
 

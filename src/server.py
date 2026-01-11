@@ -17,6 +17,7 @@ from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 
+from src import __version__
 from src.card_store import CardStore
 from src.data_manager import DataManager
 from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
@@ -39,7 +40,7 @@ class ScryfallServer:
     """
 
     name = "scryfall-local"
-    version = "0.1.0"
+    version = __version__
 
     def __init__(self, data_dir: Path):
         """Initialize server.
@@ -138,11 +139,14 @@ class ScryfallServer:
                             "type": "integer",
                             "description": "Maximum results to return (default 20, max 100)",
                             "default": 20,
+                            "minimum": 1,
+                            "maximum": 100,
                         },
                         "offset": {
                             "type": "integer",
                             "description": "Number of results to skip for pagination (default 0)",
                             "default": 0,
+                            "minimum": 0,
                         },
                     },
                     "required": ["query"],
@@ -253,8 +257,8 @@ class ScryfallServer:
             {"cards": [...], "total_count": int, "query_time_ms": int, "offset": int}
         """
         query = arguments.get("query", "")
-        limit = min(arguments.get("limit", 20), 100)
-        offset = max(arguments.get("offset", 0), 0)
+        limit = max(1, min(arguments.get("limit", 20), 100))
+        offset = max(0, arguments.get("offset", 0))
 
         start_time = time.time()
 
@@ -323,6 +327,10 @@ class ScryfallServer:
 
         Returns:
             {"found": [...], "not_found": [...], "truncated": bool}
+
+        Design: Empty input (no names or ids) returns {"found": [], "not_found": []}.
+        This is correct behavior - an empty query should return empty results,
+        not an error. The caller can check len(found) == 0 if needed.
         """
         batch_limit = 50
 
@@ -404,12 +412,15 @@ class ScryfallServer:
         Returns:
             {"last_updated": str, "card_count": int, "stale": bool, "refresh_status": str}
         """
-        store = self._get_store()
+        # Acquire lock for consistency with other methods
+        async with self._refresh_lock:
+            store = self._get_store()
+            card_count = store.get_card_count()
         status = await self._data_manager.get_status()
 
         result = {
             "last_updated": status.last_updated.isoformat() if status.last_updated else None,
-            "card_count": store.get_card_count(),
+            "card_count": card_count,
             "version": status.version,
             "stale": status.is_stale,
         }
@@ -608,7 +619,7 @@ async def run_server(data_dir: Path | None = None) -> None:
                 write_stream,
                 InitializationOptions(
                     server_name="scryfall-local",
-                    server_version="0.1.0",
+                    server_version=__version__,
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),
                         experimental_capabilities={},

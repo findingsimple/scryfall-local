@@ -114,6 +114,46 @@ class TestDataManagerUrlValidation:
             assert not manager.is_valid_download_url("not-a-url")
             assert not manager.is_valid_download_url("file:///etc/passwd")
 
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_redirect_to_invalid_domain_rejected(self):
+        """Should reject redirects to non-allowed domains."""
+        # Set up a redirect to an evil domain
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "https://evil.com/malware.json"}
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                with pytest.raises(ValueError) as exc_info:
+                    await manager.fetch_catalog()
+
+                assert "non-allowed domain" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_redirect_to_valid_domain_allowed(self):
+        """Should follow redirects to allowed Scryfall domains."""
+        # Set up a redirect to another valid Scryfall domain
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "https://data.scryfall.io/catalog.json"}
+            )
+        )
+        respx.get("https://data.scryfall.io/catalog.json").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                catalog = await manager.fetch_catalog()
+
+                assert "data" in catalog
+
 
 class TestDataManagerDownload:
     """Test bulk data downloading."""

@@ -126,6 +126,38 @@ class TestServerSearchCards:
                     assert len(page1_ids & page2_ids) == 0
 
     @pytest.mark.asyncio
+    async def test_search_cards_negative_limit_clamped(self, sample_cards: list[dict[str, Any]]):
+        """Negative limit should be clamped to minimum of 1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "search_cards",
+                    {"query": "", "limit": -5},
+                )
+
+                # Should return at least 1 result, not error or 0
+                assert "cards" in result
+                assert len(result["cards"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_search_cards_negative_offset_clamped(self, sample_cards: list[dict[str, Any]]):
+        """Negative offset should be clamped to 0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "search_cards",
+                    {"query": "", "offset": -10},
+                )
+
+                # Should work normally with offset 0
+                assert "cards" in result
+                assert result["offset"] == 0
+
+    @pytest.mark.asyncio
     async def test_search_cards_total_count_is_actual_total(self, sample_cards: list[dict[str, Any]]):
         """total_count should be actual total matches, not page size."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -401,6 +433,13 @@ class TestServerLowLevel:
         with tempfile.TemporaryDirectory() as tmpdir:
             with ScryfallServer(Path(tmpdir)) as server:
                 assert "scryfall" in server.name.lower()
+
+    def test_version_matches_package(self):
+        """Server version should match package __version__."""
+        from src import __version__
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                assert server.version == __version__
 
 
 class TestServerBackgroundRefresh:

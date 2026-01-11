@@ -64,9 +64,62 @@ class DataManager:
         if self._http_client is None or self._http_client.is_closed:
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(30.0, read=300.0),
-                follow_redirects=True,
+                # Don't follow redirects automatically - we validate redirect URLs
+                follow_redirects=False,
             )
         return self._http_client
+
+    async def _validated_get(
+        self, url: str, stream: bool = False
+    ) -> httpx.Response:
+        """Perform GET request with redirect URL validation.
+
+        Args:
+            url: URL to fetch
+            stream: Whether to stream the response
+
+        Returns:
+            Response object
+
+        Raises:
+            ValueError: If redirect goes to non-allowed domain
+        """
+        client = await self._get_client()
+        max_redirects = 5
+
+        for _ in range(max_redirects):
+            if stream:
+                response = await client.send(
+                    client.build_request("GET", url),
+                    stream=True,
+                )
+            else:
+                response = await client.get(url)
+
+            if response.is_redirect:
+                redirect_url = response.headers.get("location")
+                if not redirect_url:
+                    raise ValueError("Redirect response missing location header")
+
+                # Handle relative URLs
+                if redirect_url.startswith("/"):
+                    parsed = urlparse(url)
+                    redirect_url = f"{parsed.scheme}://{parsed.netloc}{redirect_url}"
+
+                # Validate redirect URL
+                if not self.is_valid_download_url(redirect_url):
+                    raise ValueError(
+                        f"Redirect to non-allowed domain: {redirect_url}"
+                    )
+
+                url = redirect_url
+                if stream:
+                    await response.aclose()
+                continue
+
+            return response
+
+        raise ValueError(f"Too many redirects (max {max_redirects})")
 
     async def close(self) -> None:
         """Close HTTP client."""
@@ -139,8 +192,7 @@ class DataManager:
         Returns:
             Catalog dictionary with available bulk data types
         """
-        client = await self._get_client()
-        response = await client.get(BULK_DATA_ENDPOINT)
+        response = await self._validated_get(BULK_DATA_ENDPOINT)
         response.raise_for_status()
         return response.json()
 
@@ -194,10 +246,9 @@ class DataManager:
 
         output_path = self.data_dir / filename
 
-        # Download file
-        client = await self._get_client()
-
-        async with client.stream("GET", download_url) as response:
+        # Download file with validated redirects
+        response = await self._validated_get(download_url, stream=True)
+        try:
             response.raise_for_status()
 
             total_size = int(response.headers.get("Content-Length", 0))
@@ -210,6 +261,8 @@ class DataManager:
 
                     if progress_callback:
                         progress_callback(downloaded, total_size)
+        finally:
+            await response.aclose()
 
         # Save metadata
         metadata = {

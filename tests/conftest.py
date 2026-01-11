@@ -8,7 +8,16 @@ from typing import Any
 
 @pytest.fixture
 def sample_cards() -> list[dict[str, Any]]:
-    """Sample card data for testing - covers various card types and attributes."""
+    """Sample card data for testing - covers various card types and attributes.
+
+    Design: Only cards with keyword abilities have the 'keywords' field populated.
+    This matches Scryfall's data model where instants/sorceries/artifacts without
+    keyword abilities don't have keywords. Cards in this fixture:
+    - Lightning Bolt, Counterspell, Dark Ritual: No keywords (spell effects, not abilities)
+    - Shivan Dragon, Serra Angel, Nicol Bolas: Have Flying/Vigilance keywords
+    - Llanowar Elves: No keywords (mana ability is not a keyword)
+    - Sol Ring: No keywords (artifact with activated ability)
+    """
     return [
         {
             "id": "e2d1f479-3c2b-4b2a-8c9a-1a2b3c4d5e6f",

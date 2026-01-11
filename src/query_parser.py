@@ -5,9 +5,12 @@ Supports: name, colors, cmc, type, oracle text, set, rarity.
 Boolean operators: implicit AND, explicit OR, negation (-).
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # Supported syntax for error messages
@@ -243,20 +246,23 @@ class QueryParser:
     def parse(self, query: str) -> ParsedQuery:
         """Parse a query string into a ParsedQuery object."""
         query = query.strip()
+        logger.debug("Parsing query: %r", query)
 
         # Handle empty query
         if not query:
+            logger.debug("Empty query, returning empty ParsedQuery")
             return ParsedQuery(raw_query=query)
-
-        # Check for unsupported syntax before parsing
-        self._check_unsupported(query)
 
         try:
             tokens = self._tokenize(query)
-            return self._parse_tokens(tokens, query)
+            logger.debug("Tokenized into %d tokens", len(tokens))
+            result = self._parse_tokens(tokens, query)
+            logger.debug("Parsed into %d filters", result.filter_count)
+            return result
         except QueryError:
             raise
         except Exception as e:
+            logger.warning("Failed to parse query %r: %s", query, e)
             raise QueryError(
                 f"Failed to parse query: {str(e)}",
                 hint="Check the query syntax",
@@ -554,7 +560,3 @@ class QueryParser:
 
         return None
 
-    def _check_unsupported(self, query: str) -> None:
-        """Check for unsupported syntax and give helpful errors."""
-        # All previously unsupported patterns are now implemented
-        pass

@@ -70,8 +70,10 @@ class CardStore:
             db_path: Path to SQLite database file
         """
         self.db_path = db_path
-        self._conn = sqlite3.connect(str(db_path))
+        self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrent read performance during refresh
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -87,17 +89,25 @@ class CardStore:
             cursor.execute("PRAGMA table_info(cards)")
             columns = [row[1] for row in cursor.fetchall()]
 
-            # Define migrations: (column_name, json_path, optional_transform)
+            # Define migrations: (column_name, json_path)
+            # Note: Column names are from a fixed allowlist, not user input
+            _MIGRATION_COLUMNS = frozenset({
+                "keywords", "artist", "released_at", "loyalty",
+                "flavor_text", "collector_number"
+            })
             migrations = [
-                ("keywords", "$.keywords", None),
-                ("artist", "$.artist", None),
-                ("released_at", "$.released_at", None),
-                ("loyalty", "$.loyalty", None),
-                ("flavor_text", "$.flavor_text", None),
-                ("collector_number", "$.collector_number", None),
+                ("keywords", "$.keywords"),
+                ("artist", "$.artist"),
+                ("released_at", "$.released_at"),
+                ("loyalty", "$.loyalty"),
+                ("flavor_text", "$.flavor_text"),
+                ("collector_number", "$.collector_number"),
             ]
 
-            for col_name, json_path, _ in migrations:
+            for col_name, json_path in migrations:
+                # Safety check: only allow known column names
+                if col_name not in _MIGRATION_COLUMNS:
+                    continue
                 if col_name not in columns:
                     cursor.execute(f"ALTER TABLE cards ADD COLUMN {col_name} TEXT")
                     cursor.execute(f"""
@@ -927,6 +937,10 @@ class CardStore:
                 params.append(int(value) if str(value).isdigit() else value)
 
         # Price filter
+        # Design: Cards without price data (NULL) are excluded from price comparisons.
+        # This is intentional - "usd<5" should only match cards with known USD prices,
+        # not cards where we don't know the price. CAST(NULL AS REAL) returns NULL,
+        # and NULL comparisons return false, achieving this behavior.
         if "price" in filters:
             price_filter = filters["price"]
             currency = price_filter.get("currency", "usd").lower()
@@ -953,6 +967,9 @@ class CardStore:
                 params.append(value)
 
         # Keyword filter
+        # Design: Parser normalizes keywords to title case (e.g., "Flying"), and we use
+        # case-insensitive LIKE here. This double-normalization is intentional - it ensures
+        # matching works regardless of how keywords are stored in the database.
         if "keyword" in filters:
             keyword_values = filters["keyword"]
             if isinstance(keyword_values, list):

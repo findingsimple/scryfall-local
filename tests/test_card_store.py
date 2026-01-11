@@ -34,6 +34,18 @@ class TestCardStoreSchema:
 
             store.close()
 
+    def test_wal_mode_enabled(self):
+        """WAL mode should be enabled for better concurrent read performance."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Check journal mode is WAL
+            result = store._conn.execute("PRAGMA journal_mode").fetchone()
+            assert result[0].lower() == "wal"
+
+            store.close()
+
 
 class TestCardStoreInsert:
     """Test card insertion."""

@@ -254,7 +254,10 @@ class TestMain:
                     # Verify it was called with show_status coroutine
                     coro = mock_run.call_args[0][0]
                     assert coro.__name__ == "show_status" or "show_status" in str(coro)
-                    coro.close()  # Close to prevent unawaited coroutine warning
+                    # Design: We must close the coroutine to prevent "coroutine was never
+                    # awaited" warnings. This is the correct pattern when mocking asyncio.run
+                    # - the coroutine object is created but never actually run.
+                    coro.close()
 
     def test_main_import_command(self):
         """Should call import_data for import command."""

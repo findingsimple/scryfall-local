@@ -3,6 +3,9 @@ name = "scryfall-local"
 version = "0.1.0"
 description = "Local MCP server for Scryfall Magic: The Gathering card data"
 readme = "README.md"
+# Design: No upper bound on Python version. Upper bounds cause more problems than
+# they solve - they prevent users from using newer Python versions that are almost
+# always backwards compatible, and create unnecessary dependency conflicts.
 requires-python = ">=3.11"
 authors = [
     { name = "findingsimple" }
