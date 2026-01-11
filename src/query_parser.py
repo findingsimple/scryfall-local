@@ -242,7 +242,9 @@ TOKEN_PATTERNS = [
     # Name patterns - strict exact match with ! prefix comes first
     (r'!"([^"]+)"', 'STRICT_NAME'),
     (r'"([^"]+)"', 'EXACT_NAME'),
-    (r'([a-zA-Z][a-zA-Z0-9_-]*)', 'PARTIAL_NAME'),
+    # Partial name allows letters, numbers, underscores, hyphens, and apostrophes
+    # This supports card names like "Urza's", "Al-abara's", "Ach! Hans, Run!"
+    (r"([a-zA-Z][a-zA-Z0-9_'-]*)", 'PARTIAL_NAME'),
 ]
 
 

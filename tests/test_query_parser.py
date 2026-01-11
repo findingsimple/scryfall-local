@@ -29,6 +29,28 @@ class TestQueryParserBasicName:
         # Parsed as a partial name filter
         assert "name_partial" in result.filters
 
+    def test_parse_partial_name_with_apostrophe(self):
+        """Partial name with apostrophe (e.g., Urza's)."""
+        parser = QueryParser()
+        result = parser.parse("Urza's")
+
+        assert result.filters["name_partial"] == "Urza's"
+
+    def test_parse_partial_name_with_apostrophe_and_hyphen(self):
+        """Partial name with both apostrophe and hyphen."""
+        parser = QueryParser()
+        result = parser.parse("Al-abara's")
+
+        assert result.filters["name_partial"] == "Al-abara's"
+
+    def test_parse_partial_name_apostrophe_with_filter(self):
+        """Partial name with apostrophe combined with other filters."""
+        parser = QueryParser()
+        result = parser.parse("Urza's t:land")
+
+        assert result.filters["name_partial"] == "Urza's"
+        assert result.filters["type"] == ["land"]
+
 
 class TestQueryParserColors:
     """Test color-based queries."""
