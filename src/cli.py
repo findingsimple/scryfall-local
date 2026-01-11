@@ -193,54 +193,55 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
     """Import cards from JSON file into database."""
     manager = DataManager(data_dir)
 
-    # Find JSON file if not specified
-    if json_file is None:
-        json_files = list(data_dir.glob("*.json"))
-        json_files = [f for f in json_files if f.name != "metadata.json"]
+    try:
+        # Find JSON file if not specified
+        if json_file is None:
+            json_files = list(data_dir.glob("*.json"))
+            json_files = [f for f in json_files if f.name != "metadata.json"]
 
-        if not json_files:
-            print("Error: No JSON data file found in data directory.")
-            print("Run 'python -m src.cli download' first.")
+            if not json_files:
+                print("Error: No JSON data file found in data directory.")
+                print("Run 'python -m src.cli download' first.")
+                return
+
+            # Use most recent file
+            json_file = max(json_files, key=lambda f: f.stat().st_mtime)
+
+        if not json_file.exists():
+            print(f"Error: File not found: {json_file}")
             return
 
-        # Use most recent file
-        json_file = max(json_files, key=lambda f: f.stat().st_mtime)
+        print(f"Importing from: {json_file.name}")
+        print(f"  File size: {format_size(json_file.stat().st_size)}")
+        print()
 
-    if not json_file.exists():
-        print(f"Error: File not found: {json_file}")
-        return
+        # Import into database
+        db_path = data_dir / "cards.db"
 
-    print(f"Importing from: {json_file.name}")
-    print(f"  File size: {format_size(json_file.stat().st_size)}")
-    print()
+        # Remove old database if exists
+        if db_path.exists():
+            print("Removing old database...")
+            db_path.unlink()
 
-    # Import into database
-    db_path = data_dir / "cards.db"
+        print("Importing cards using streaming parser...")
 
-    # Remove old database if exists
-    if db_path.exists():
-        print("Removing old database...")
-        db_path.unlink()
+        def import_progress(imported: int, total: int | None) -> None:
+            sys.stdout.write(f"\r  Importing... {imported:,} cards")
+            sys.stdout.flush()
 
-    store = CardStore(db_path)
+        # Use context manager to ensure store is closed even on error
+        with CardStore(db_path) as store:
+            total_cards = import_cards_streaming(json_file, store, import_progress)
 
-    print("Importing cards using streaming parser...")
+        print()
+        print()
+        print(f"Import complete! {total_cards:,} cards in database.")
 
-    def import_progress(imported: int, total: int | None) -> None:
-        sys.stdout.write(f"\r  Importing... {imported:,} cards")
-        sys.stdout.flush()
+        # Update metadata
+        manager.update_card_count(total_cards)
 
-    total_cards = import_cards_streaming(json_file, store, import_progress)
-
-    print()
-    print()
-    print(f"Import complete! {total_cards:,} cards in database.")
-
-    # Update metadata
-    manager.update_card_count(total_cards)
-
-    store.close()
-    await manager.close()
+    finally:
+        await manager.close()
 
 
 def main() -> None:
