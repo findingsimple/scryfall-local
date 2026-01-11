@@ -620,6 +620,32 @@ class CardStore:
             conditions.append("cmc != ?")
             params.append(value)
 
+        # Mana cost filter (e.g., m:{R}{R}, mana:{2}{U}{U})
+        if "mana" in filters:
+            mana_filter = filters["mana"]
+            mana_value = mana_filter.get("value", "")
+            operator = mana_filter.get("operator", ":")
+            if operator == "=":
+                # Exact match
+                conditions.append("mana_cost = ?")
+                params.append(mana_value)
+            else:
+                # Contains match (default for :)
+                conditions.append("mana_cost LIKE ?")
+                params.append(f"%{mana_value}%")
+
+        # Mana cost NOT filter
+        if "mana_not" in filters:
+            mana_not_filter = filters["mana_not"]
+            mana_value = mana_not_filter.get("value", "")
+            operator = mana_not_filter.get("operator", ":")
+            if operator == "=":
+                conditions.append("(mana_cost IS NULL OR mana_cost != ?)")
+                params.append(mana_value)
+            else:
+                conditions.append("(mana_cost IS NULL OR mana_cost NOT LIKE ?)")
+                params.append(f"%{mana_value}%")
+
         # Type filter
         if "type" in filters:
             type_values = filters["type"]

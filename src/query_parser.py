@@ -13,7 +13,7 @@ from typing import Any
 # Supported syntax for error messages
 # Brief summary for tool descriptions
 SYNTAX_SUMMARY = (
-    "Supports: name, colors (c:blue), mana value (cmc:3), type (t:creature), "
+    "Supports: name, colors (c:blue), mana value (cmc:3), mana cost (m:{R}{R}), type (t:creature), "
     "oracle text (o:flying), set (set:neo), rarity (r:mythic), format (f:modern), "
     "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023). "
     "Boolean operators: implicit AND, OR, - (negation), (parentheses)."
@@ -25,6 +25,7 @@ SUPPORTED_SYNTAX = [
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
     "color identity: id:wubrg, identity:esper, ci:rg (for Commander)",
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
+    "mana cost: m:{R}, m:{2}{U}{U}, mana:{W}{W} (exact symbols)",
     "type: t:creature, t:\"legendary creature\"",
     "oracle text: o:flying, o:\"enters the battlefield\"",
     "keyword ability: kw:flying, keyword:deathtouch, keywords:vigilance",
@@ -215,6 +216,8 @@ TOKEN_PATTERNS = [
     (r'(?:a|artist):"([^"]+)"', 'ARTIST_QUOTED'),
     (r'(?:a|artist):([a-zA-Z][a-zA-Z0-9_-]*)', 'ARTIST'),
     (r'year(>=|<=|>|<|=|!=|:)(\d{4})', 'YEAR'),
+    # Mana cost pattern (e.g., m:{R}{R}, mana:{2}{U}{U})
+    (r'(?:m|mana)(=|:)((?:\{[^}]+\})+)', 'MANA'),
     # Boolean operators
     (r'\bOR\b', 'OR'),
     (r'-', 'NEGATION'),
@@ -310,6 +313,10 @@ class QueryParser:
                         operator = match.group(1)
                         value = int(match.group(2))
                         tokens.append((token_type, (operator, value)))
+                    elif token_type == 'MANA':
+                        operator = match.group(1)
+                        mana_str = match.group(2)
+                        tokens.append((token_type, (operator, mana_str)))
                     elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
                     elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST'):
@@ -455,6 +462,7 @@ class QueryParser:
             'PRICE': 'price',
             'ARTIST': 'artist',
             'YEAR': 'year',
+            'MANA': 'mana',
             'EXACT_NAME': 'name_exact',
             'STRICT_NAME': 'name_strict',
             'PARTIAL_NAME': 'name_partial',
@@ -527,6 +535,12 @@ class QueryParser:
                 operator = '='
             return {"operator": operator, "value": val}
 
+        if token_type == 'MANA':
+            operator, mana_str = value
+            # Normalize : to = for exact match, keep as : for contains
+            # m:{R} means contains {R}, m={R} means exactly {R}
+            return {"operator": operator, "value": mana_str}
+
         if token_type in ('TYPE', 'ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
             return value
 
@@ -534,14 +548,5 @@ class QueryParser:
 
     def _check_unsupported(self, query: str) -> None:
         """Check for unsupported syntax and give helpful errors."""
-        unsupported_patterns = {
-            r'\bm:\{': ("Mana symbol filter", "m:{2}{U}{U}"),
-        }
-
-        for pattern, (name, example) in unsupported_patterns.items():
-            if re.search(pattern, query, re.IGNORECASE):
-                raise QueryError(
-                    f"{name} is not yet supported",
-                    hint=f"'{example}' syntax will be added in a future version",
-                    supported_syntax=SUPPORTED_SYNTAX,
-                )
+        # All previously unsupported patterns are now implemented
+        pass

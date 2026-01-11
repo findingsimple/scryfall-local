@@ -59,6 +59,36 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 | `cmc<N` | Mana value < N | `cmc<2` |
 | `mv:N` | Alias for cmc | `mv:3` |
 
+### Mana Cost (Symbols)
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `m:{symbols}` | Contains mana symbols | `m:{R}`, `m:{U}{U}` |
+| `m={symbols}` | Exact mana cost | `m={R}`, `m={2}{U}{U}` |
+| `mana:{symbols}` | Alias for m: | `mana:{W}{W}` |
+
+**Symbol Format:**
+- Use curly braces: `{R}`, `{U}`, `{B}`, `{W}`, `{G}`
+- Generic mana: `{1}`, `{2}`, `{3}`, etc.
+- Colorless: `{C}`
+- Variable: `{X}`
+- Hybrid: `{W/U}`, `{2/B}`, etc.
+
+**Examples:**
+```
+# Find cards with two blue mana in cost
+m:{U}{U}
+
+# Find cards with exactly {R} mana cost
+m={R}
+
+# Find cards costing 4 generic + 2 red
+m:{4}{R}{R}
+
+# Combine with other filters
+m:{W}{W} t:creature
+```
+
 ### Type
 
 | Syntax | Description | Example |
@@ -256,12 +286,6 @@ For planeswalker cards.
 ## Planned (Not Yet Supported)
 
 The following syntax is documented for future implementation:
-
-### High Value
-
-| Feature | Syntax | Description |
-|---------|--------|-------------|
-| Mana symbols | `m:{2}{U}{U}` | Specific mana cost symbols |
 
 ### Medium Value
 

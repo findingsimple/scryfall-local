@@ -912,6 +912,104 @@ class TestCardStoreRandomCard:
             store.close()
 
 
+class TestCardStoreManaCost:
+    """Test mana cost queries."""
+
+    def test_mana_contains_single_symbol(self, sample_cards: list[dict[str, Any]]):
+        """Should find cards containing a single mana symbol."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # m:{R} should match cards with R in mana cost
+            parsed = ParsedQuery(
+                filters={"mana": {"operator": ":", "value": "{R}"}},
+                raw_query="m:{R}",
+            )
+
+            results = store.execute_query(parsed)
+            assert len(results) >= 1
+            for card in results:
+                assert "{R}" in card.get("mana_cost", "")
+
+            store.close()
+
+    def test_mana_contains_double_symbol(self, sample_cards: list[dict[str, Any]]):
+        """Should find cards containing double mana symbols."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # m:{U}{U} should match Counterspell
+            parsed = ParsedQuery(
+                filters={"mana": {"operator": ":", "value": "{U}{U}"}},
+                raw_query="m:{U}{U}",
+            )
+
+            results = store.execute_query(parsed)
+            assert len(results) >= 1
+            for card in results:
+                assert "{U}{U}" in card.get("mana_cost", "")
+
+            store.close()
+
+    def test_mana_exact_match(self, sample_cards: list[dict[str, Any]]):
+        """Should find cards with exact mana cost."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # m={R} should match only cards with exactly {R} mana cost
+            parsed = ParsedQuery(
+                filters={"mana": {"operator": "=", "value": "{R}"}},
+                raw_query="m={R}",
+            )
+
+            results = store.execute_query(parsed)
+            for card in results:
+                assert card.get("mana_cost") == "{R}"
+
+            store.close()
+
+    def test_mana_with_generic(self, sample_cards: list[dict[str, Any]]):
+        """Should find cards with generic mana in cost."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # m:{4}{R}{R} should match Shivan Dragon
+            parsed = ParsedQuery(
+                filters={"mana": {"operator": ":", "value": "{4}{R}{R}"}},
+                raw_query="m:{4}{R}{R}",
+            )
+
+            results = store.execute_query(parsed)
+            assert len(results) >= 1
+            for card in results:
+                assert "{4}{R}{R}" in card.get("mana_cost", "")
+
+            store.close()
+
+    def test_mana_not_filter(self, sample_cards: list[dict[str, Any]]):
+        """Should exclude cards with specific mana symbol."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # -m:{R} should exclude cards with R in mana cost
+            parsed = ParsedQuery(
+                filters={"mana_not": {"operator": ":", "value": "{R}"}},
+                raw_query="-m:{R}",
+            )
+
+            results = store.execute_query(parsed)
+            for card in results:
+                mana_cost = card.get("mana_cost", "") or ""
+                assert "{R}" not in mana_cost
+
+            store.close()
+
+
 class TestCardStorePagination:
     """Test pagination with offset."""
 

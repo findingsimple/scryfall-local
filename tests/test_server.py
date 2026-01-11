@@ -152,7 +152,7 @@ class TestServerSearchCards:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "m:{2}{U}"},  # Unsupported syntax (mana symbols)
+                    {"query": "c:"},  # Invalid syntax - missing color value
                 )
 
                 assert "error" in result
@@ -375,7 +375,7 @@ class TestServerResponseFormat:
 
                 result = await server.call_tool(
                     "search_cards",
-                    {"query": "m:{R}{R}"},  # Unsupported (mana symbols)
+                    {"query": "c:"},  # Invalid syntax - missing color value
                 )
 
                 assert "error" in result
