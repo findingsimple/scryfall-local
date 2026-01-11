@@ -206,6 +206,21 @@ class TestServerGetCard:
 
                 assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_get_card_both_name_and_id_error(self, sample_cards: list[dict[str, Any]]):
+        """Should error when both name and id are provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_card",
+                    {"name": "Lightning Bolt", "id": "some-id"},
+                )
+
+                assert "error" in result
+                assert "not both" in result["error"]
+
 
 class TestServerGetCardsBatch:
     """Test get_cards_batch tool."""

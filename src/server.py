@@ -286,7 +286,7 @@ class ScryfallServer:
         """Get a single card.
 
         Args:
-            arguments: {"name": str} or {"id": str}
+            arguments: {"name": str} or {"id": str} (not both)
 
         Returns:
             Card dictionary or error
@@ -296,7 +296,9 @@ class ScryfallServer:
         name = arguments.get("name")
         card_id = arguments.get("id")
 
-        if name:
+        if name and card_id:
+            return {"error": "Provide either 'name' or 'id', not both"}
+        elif name:
             card = store.get_card_by_name(name)
         elif card_id:
             card = store.get_card_by_id(card_id)
