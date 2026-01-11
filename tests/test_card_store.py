@@ -1031,6 +1031,34 @@ class TestCardStoreNewFilters:
 
             store.close()
 
+    def test_produces_colorless_filter(self):
+        """produces:c should find cards that produce colorless mana."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Forest", "produced_mana": ["G"]},
+                {"id": "2", "name": "Mountain", "produced_mana": ["R"]},
+                {"id": "3", "name": "Sol Ring", "produced_mana": ["C"]},
+                {"id": "4", "name": "Mana Crypt", "produced_mana": ["C"]},
+                {"id": "5", "name": "City of Brass", "produced_mana": ["W", "U", "B", "R", "G"]},
+            ]
+            store.insert_cards(cards)
+
+            # produces:c passes an empty list [] which means colorless
+            parsed = ParsedQuery(
+                filters={"produces": []},
+                raw_query="produces:c",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Sol Ring" in names
+            assert "Mana Crypt" in names
+            assert "Forest" not in names
+            assert "City of Brass" not in names
+
+            store.close()
+
     def test_watermark_filter(self):
         """wm:selesnya should find cards with selesnya watermark."""
         with tempfile.TemporaryDirectory() as tmpdir:

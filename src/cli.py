@@ -28,7 +28,11 @@ def print_progress_bar(downloaded: int, total: int) -> None:
     DataManager.download_bulk_data progress_callback parameter.
     """
     bar_length = 40
-    if total == 0:
+    if total is None or total <= 0:
+        # Unknown or invalid total - show indeterminate progress
+        downloaded_str = format_size(downloaded)
+        sys.stdout.write(f"\r  Downloaded: {downloaded_str}")
+        sys.stdout.flush()
         return
 
     percent = downloaded / total

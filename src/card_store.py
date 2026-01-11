@@ -7,6 +7,7 @@ All queries use parameterized statements for SQL injection prevention.
 import json
 import logging
 import random
+import re
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
@@ -15,6 +16,22 @@ from typing import Any
 from src.query_parser import ParsedQuery
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_numeric_prefix(value: str) -> int:
+    """Extract numeric prefix from a string value.
+
+    Used for collector number comparisons where values may be alphanumeric
+    (e.g., "100a", "1★"). Returns 0 if no numeric prefix found.
+
+    Args:
+        value: String that may start with digits
+
+    Returns:
+        Integer value of the numeric prefix, or 0 if none found
+    """
+    match = re.match(r"^(\d+)", value)
+    return int(match.group(1)) if match else 0
 
 # Allowlists for SQL-interpolated values (security: prevents SQL injection)
 VALID_FORMATS = frozenset({
@@ -967,8 +984,10 @@ class CardStore:
                 params.append(str(value))
             else:
                 sql_op = OPERATOR_MAP.get(operator, "=")
+                # Extract numeric prefix for comparison (e.g., "100a" -> 100)
+                numeric_value = _extract_numeric_prefix(str(value))
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
-                params.append(int(value) if str(value).isdigit() else value)
+                params.append(numeric_value)
 
         # Collector number NOT filter
         if "collector_number_not" in filters:
@@ -980,8 +999,10 @@ class CardStore:
                 params.append(str(value))
             else:
                 sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+                # Extract numeric prefix for comparison (e.g., "100a" -> 100)
+                numeric_value = _extract_numeric_prefix(str(value))
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
-                params.append(int(value) if str(value).isdigit() else value)
+                params.append(numeric_value)
 
         # Price filter
         # Design: Cards without price data (NULL) are excluded from price comparisons.
@@ -1039,6 +1060,8 @@ class CardStore:
                 params.append(f'%"{keyword_not_values.lower()}"%')
 
         # Artist filter
+        # Design: Uses partial match (LIKE %...%) because artist names are often
+        # searched by partial name (e.g., a:seb matches "Seb McKinnon")
         if "artist" in filters:
             artist_value = filters["artist"]
             conditions.append("LOWER(artist) LIKE ?")
@@ -1086,17 +1109,17 @@ class CardStore:
                     f"OR json_extract(legalities, '$.{format_name}') != 'banned')"
                 )
 
-        # Produces mana filter (e.g., produces:g)
+        # Produces mana filter (e.g., produces:g, produces:c)
         if "produces" in filters:
             produced_colors = filters["produces"]
             if isinstance(produced_colors, list):
-                for color in produced_colors:
-                    if color:  # Skip empty (colorless)
+                if len(produced_colors) == 0:
+                    # Empty list means colorless (produces:c) - check for "C" in produced_mana
+                    conditions.append("produced_mana LIKE '%\"C\"%'")
+                else:
+                    for color in produced_colors:
                         conditions.append("produced_mana LIKE ?")
                         params.append(f'%"{color}"%')
-                    else:
-                        # Colorless mana production - check for C in produced_mana
-                        conditions.append("produced_mana LIKE '%\"C\"%'")
 
         # Produces NOT filter
         if "produces_not" in filters:
@@ -1108,6 +1131,9 @@ class CardStore:
                         params.append(f'%"{color}"%')
 
         # Watermark filter (e.g., wm:phyrexian)
+        # Design: Uses exact match (=) because watermarks are fixed values from a
+        # known set (e.g., "phyrexian", "selesnya") - partial matching would cause
+        # false positives (e.g., wm:sel matching both "selesnya" and other watermarks)
         if "watermark" in filters:
             watermark_value = filters["watermark"]
             conditions.append("LOWER(watermark) = ?")

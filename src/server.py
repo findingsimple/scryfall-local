@@ -22,6 +22,9 @@ from src.card_store import CardStore
 from src.data_manager import DataManager
 from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
 
+# Server name constant - used in multiple places
+SERVER_NAME = "scryfall-local"
+
 
 @dataclass
 class Tool:
@@ -39,7 +42,7 @@ class ScryfallServer:
     from locally cached Scryfall data.
     """
 
-    name = "scryfall-local"
+    name = SERVER_NAME
     version = __version__
 
     def __init__(self, data_dir: Path):
@@ -566,7 +569,7 @@ def create_server(data_dir: Path) -> tuple[Server, ScryfallServer]:
     scryfall = ScryfallServer(data_dir)
 
     # Create low-level MCP server
-    server = Server("scryfall-local")
+    server = Server(SERVER_NAME)
 
     @server.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
@@ -618,7 +621,7 @@ async def run_server(data_dir: Path | None = None) -> None:
                 read_stream,
                 write_stream,
                 InitializationOptions(
-                    server_name="scryfall-local",
+                    server_name=SERVER_NAME,
                     server_version=__version__,
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),

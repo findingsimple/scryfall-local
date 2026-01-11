@@ -199,7 +199,7 @@ TOKEN_PATTERNS = [
     # Filter patterns with operators
     (r'(?:id|identity|ci)(>=|<=|>|<|=|!=|:)([a-zA-Z]+)', 'COLOR_IDENTITY'),
     (r'(?:c|color|colors)(>=|<=|>|<|=|!=|:)([a-zA-Z]+)', 'COLOR'),
-    (r'(?:cmc|mv|manavalue)(>=|<=|>|<|=|!=|:)(\d+)', 'CMC'),
+    (r'(?:cmc|mv|manavalue)(>=|<=|>|<|=|!=|:)(\d+(?:\.\d+)?)', 'CMC'),
     (r'(?:t|type):"([^"]+)"', 'TYPE_QUOTED'),
     (r'(?:t|type):([a-zA-Z]+)', 'TYPE'),
     (r'(?:o|oracle|text):"([^"]+)"', 'ORACLE_QUOTED'),
@@ -301,7 +301,7 @@ class QueryParser:
                         tokens.append((token_type, (operator, value)))
                     elif token_type == 'CMC':
                         operator = match.group(1)
-                        value = int(match.group(2))
+                        value = float(match.group(2))
                         tokens.append((token_type, (operator, value)))
                     elif token_type in ('POWER', 'TOUGHNESS', 'LOYALTY'):
                         operator = match.group(1)
@@ -427,8 +427,12 @@ class QueryParser:
                 continue
 
             if token_type == 'RPAREN':
-                i += 1
-                continue
+                # Unmatched closing parenthesis at top level
+                raise QueryError(
+                    "Unbalanced parentheses: extra closing ')'",
+                    hint="Check that all closing parentheses have matching opening parentheses",
+                    supported_syntax=SYNTAX_SUMMARY,
+                )
 
             # Process filter tokens
             filter_key = self._get_filter_key(token_type, negated)

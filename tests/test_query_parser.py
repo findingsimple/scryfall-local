@@ -891,6 +891,51 @@ class TestQueryParserErrorHandling:
 
         assert "parentheses" in str(exc_info.value).lower()
 
+    def test_extra_closing_paren_raises_error(self):
+        """Extra closing parenthesis should raise QueryError."""
+        parser = QueryParser()
+
+        with pytest.raises(QueryError) as exc_info:
+            parser.parse("c:blue)")  # Extra closing paren
+
+        error = exc_info.value
+        assert "parentheses" in str(error).lower()
+        assert "extra" in str(error).lower() or "closing" in str(error).lower()
+
+    def test_multiple_extra_closing_parens(self):
+        """Multiple extra closing parens should raise QueryError."""
+        parser = QueryParser()
+
+        with pytest.raises(QueryError) as exc_info:
+            parser.parse("c:blue))")  # Multiple extra closing parens
+
+        assert "parentheses" in str(exc_info.value).lower()
+
+
+class TestQueryParserFractionalCMC:
+    """Test fractional CMC parsing (e.g., Little Girl has CMC 0.5)."""
+
+    def test_parse_fractional_cmc(self):
+        """Fractional CMC: cmc:0.5."""
+        parser = QueryParser()
+        result = parser.parse("cmc:0.5")
+
+        assert result.filters["cmc"] == {"operator": "=", "value": 0.5}
+
+    def test_parse_fractional_cmc_with_operator(self):
+        """Fractional CMC with operator: cmc>=1.5."""
+        parser = QueryParser()
+        result = parser.parse("cmc>=1.5")
+
+        assert result.filters["cmc"] == {"operator": ">=", "value": 1.5}
+
+    def test_parse_integer_cmc_still_works(self):
+        """Integer CMC should still work as float: cmc:3."""
+        parser = QueryParser()
+        result = parser.parse("cmc:3")
+
+        assert result.filters["cmc"] == {"operator": "=", "value": 3.0}
+
 
 class TestQueryParserColorOperators:
     """Test color greater-than and less-than operators."""
