@@ -332,6 +332,129 @@ Supported blocks: ice age, mirage, tempest, urza, masques, invasion, odyssey, on
 
 Common watermarks: phyrexian, mirran, selesnya, dimir, golgari, boros, orzhov, izzet, gruul, azorius, simic, rakdos, riveteers, obscura, maestros, cabaretti, brokers.
 
+## Planned Features
+
+Features that could be implemented to achieve fuller Scryfall parity:
+
+### High Priority
+
+- [ ] **restricted:format** - Cards restricted (1-of) in a format
+  - Syntax: `restricted:vintage`
+  - Similar to `banned:` but checks for "restricted" status in legalities
+
+- [ ] **is: filters** - Card characteristic flags
+  - Syntax: `is:reserved`, `is:reprint`, `is:promo`, `is:digital`, `is:full`, `is:foil`, `is:nonfoil`, `is:etched`
+  - Requires extracting fields from raw_data: `reserved`, `reprint`, `promo`, `digital`, `full_art`, `foil`, `nonfoil`
+
+- [ ] **game: filter** - Platform availability
+  - Syntax: `game:paper`, `game:arena`, `game:mtgo`
+  - Requires `games` array from raw_data
+
+- [ ] **lang: filter** - Card language
+  - Syntax: `lang:en`, `lang:ja`, `lang:de`, `lang:ko`
+  - Requires `lang` field from raw_data
+
+- [ ] **unique: filter** - Deduplicate results
+  - Syntax: `unique:cards` (by oracle_id), `unique:art` (by illustration_id), `unique:prints` (all)
+  - Requires grouping logic in query execution
+
+- [ ] **order:/direction:** - Sort results
+  - Syntax: `order:name`, `order:cmc`, `order:released`, `order:usd`, `direction:asc`, `direction:desc`
+  - Requires ORDER BY clause in SQL
+
+### Medium Priority
+
+- [ ] **frame: filter** - Card frame style
+  - Syntax: `frame:2015`, `frame:modern`, `frame:old`, `frame:future`
+  - Requires `frame` field from raw_data
+
+- [ ] **border: filter** - Card border color
+  - Syntax: `border:black`, `border:white`, `border:silver`, `border:gold`, `border:borderless`
+  - Requires `border_color` field from raw_data
+
+- [ ] **layout: filter** - Card layout type
+  - Syntax: `is:split`, `is:flip`, `is:transform`, `is:mdfc`, `is:meld`, `is:leveler`, `is:saga`, `is:adventure`, `is:class`
+  - Requires `layout` field from raw_data
+
+- [ ] **date: filter** - Exact release date
+  - Syntax: `date:2023-01-01`, `date>=2020-06-15`, `date<2019-01-01`
+  - Uses existing `released_at` column with full date comparison
+
+- [ ] **prints: filter** - Number of printings
+  - Syntax: `prints:1` (only one printing), `prints>=10` (many printings)
+  - Requires subquery counting by oracle_id
+
+- [ ] **stamp: filter** - Security stamp type
+  - Syntax: `stamp:oval`, `stamp:acorn`, `stamp:triangle`, `stamp:arena`, `stamp:heart`
+  - Requires `security_stamp` field from raw_data
+
+### Lower Priority
+
+- [ ] **art: filter** - Art treatment
+  - Syntax: `is:fullart`, `is:extendedart`, `art:full`, `art:extended`
+  - Requires `full_art` field from raw_data
+
+- [ ] **illustration: filter** - Specific illustration
+  - Syntax: `illustration:uuid`
+  - Requires `illustration_id` field from raw_data
+
+- [ ] **new: filter** - Changed elements in reprints
+  - Syntax: `new:art`, `new:flavor`, `new:frame`, `new:artist`
+  - Complex: requires comparing against other printings
+
+- [ ] **pt: filter** - Combined power/toughness
+  - Syntax: `pt:3/3` (exact), `powtou>=6` (combined total)
+  - Requires parsing P/T format or calculating sum
+
+- [ ] **devotion: filter** - Mana symbol count in cost
+  - Syntax: `devotion:R>=3` (3+ red symbols in cost)
+  - Requires parsing mana_cost string
+
+- [ ] **re:/regex: filter** - Regex pattern matching
+  - Syntax: `re:"^Lightning"`, `regex:"bolt$"`
+  - SQLite supports REGEXP with custom function
+
+- [ ] **is:commander filter** - Can be commander
+  - Syntax: `is:commander`
+  - Requires checking type_line for "Legendary Creature" or specific text
+
+- [ ] **is:spell/is:permanent** - Card category
+  - Syntax: `is:spell`, `is:permanent`
+  - Derived from type_line
+
+- [ ] **is:vanilla** - No rules text
+  - Syntax: `is:vanilla`
+  - Check for empty/null oracle_text (excluding reminder text)
+
+- [ ] **is:funny** - Un-set cards
+  - Syntax: `is:funny`
+  - Requires checking set type or `set_type` field
+
+- [ ] **include:extras** - Include tokens/emblems
+  - Syntax: `include:extras`
+  - Currently may already include these; toggle to exclude
+
+### Implementation Notes
+
+**Database columns that may need adding:**
+- `frame` (text) - frame style
+- `border_color` (text) - border color
+- `layout` (text) - card layout
+- `lang` (text) - language code
+- `games` (text/JSON) - platform availability
+- `reserved` (boolean) - reserved list
+- `reprint` (boolean) - is a reprint
+- `promo` (boolean) - is a promo
+- `digital` (boolean) - digital-only
+- `full_art` (boolean) - full art treatment
+- `security_stamp` (text) - stamp type
+- `illustration_id` (text) - illustration UUID
+
+**Query execution changes:**
+- `unique:` requires GROUP BY or DISTINCT ON logic
+- `order:` requires dynamic ORDER BY clause
+- `prints:` requires COUNT subquery
+
 ## Not Planned
 
 The following features are intentionally out of scope for this project:
