@@ -6,6 +6,7 @@ All queries use parameterized statements for SQL injection prevention.
 
 import json
 import logging
+import random
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
@@ -947,7 +948,6 @@ class CardStore:
             # Get filtered results then pick random
             results = self.execute_query(parsed, limit=1000)
             if results:
-                import random
                 return random.choice(results)
             return None
 
