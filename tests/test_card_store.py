@@ -146,6 +146,77 @@ class TestCardStoreInsert:
 
             store.close()
 
+    def test_upsert_preserves_rowid_and_fts_sync(self, lightning_bolt: dict[str, Any]):
+        """Updating a card should preserve rowid and keep FTS in sync."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Insert original card
+            store.insert_card(lightning_bolt)
+
+            # Get the original rowid
+            cursor = store._conn.cursor()
+            cursor.execute("SELECT rowid FROM cards WHERE id = ?", (lightning_bolt["id"],))
+            original_rowid = cursor.fetchone()[0]
+
+            # Verify FTS works with original text
+            results = store.query_by_oracle_text("3 damage")
+            assert len(results) == 1
+            assert results[0]["name"] == "Lightning Bolt"
+
+            # Update the card with new oracle text
+            updated_card = lightning_bolt.copy()
+            updated_card["oracle_text"] = "Lightning Bolt deals 4 damage to any target."
+            store.insert_card(updated_card)
+
+            # Verify rowid is preserved (UPSERT behavior, not DELETE+INSERT)
+            cursor.execute("SELECT rowid FROM cards WHERE id = ?", (lightning_bolt["id"],))
+            new_rowid = cursor.fetchone()[0]
+            assert new_rowid == original_rowid, "Rowid should be preserved on update"
+
+            # Verify card count is still 1 (update, not duplicate)
+            assert store.get_card_count() == 1
+
+            # Verify FTS is updated - old text should NOT match
+            results = store.query_by_oracle_text("3 damage")
+            assert len(results) == 0, "Old oracle text should not be in FTS index"
+
+            # Verify FTS has new text
+            results = store.query_by_oracle_text("4 damage")
+            assert len(results) == 1
+            assert results[0]["name"] == "Lightning Bolt"
+
+            store.close()
+
+    def test_upsert_fts_sync_multiple_updates(self, lightning_bolt: dict[str, Any]):
+        """Multiple updates should keep FTS properly synced."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Insert and update multiple times
+            store.insert_card(lightning_bolt)
+
+            for i in range(5):
+                updated_card = lightning_bolt.copy()
+                updated_card["oracle_text"] = f"Deals {i} damage."
+                store.insert_card(updated_card)
+
+            # Should still only have 1 card
+            assert store.get_card_count() == 1
+
+            # Only the latest text should be searchable
+            for i in range(4):
+                results = store.query_by_oracle_text(f"Deals {i} damage")
+                assert len(results) == 0, f"Old text 'Deals {i} damage' should not match"
+
+            # Latest update should match
+            results = store.query_by_oracle_text("Deals 4 damage")
+            assert len(results) == 1
+
+            store.close()
+
 
 class TestCardStoreQueryByName:
     """Test name-based queries."""

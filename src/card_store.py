@@ -360,14 +360,43 @@ class CardStore:
         cursor.execute("SELECT COUNT(*) FROM cards")
         return cursor.fetchone()[0]
 
-    # SQL for inserting cards
+    # SQL for inserting/updating cards using UPSERT pattern
+    # Uses ON CONFLICT DO UPDATE to preserve rowid, ensuring FTS5 triggers work correctly.
+    # INSERT OR REPLACE would delete+insert, potentially changing rowid and causing
+    # FTS index to become stale (delete trigger uses old rowid that no longer exists).
     _INSERT_SQL = """
-        INSERT OR REPLACE INTO cards (
+        INSERT INTO cards (
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, artist, released_at, loyalty, flavor_text, collector_number,
             watermark, produced_mana, image_uris, legalities, prices, raw_data
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            oracle_id = excluded.oracle_id,
+            name = excluded.name,
+            mana_cost = excluded.mana_cost,
+            cmc = excluded.cmc,
+            type_line = excluded.type_line,
+            oracle_text = excluded.oracle_text,
+            power = excluded.power,
+            toughness = excluded.toughness,
+            colors = excluded.colors,
+            color_identity = excluded.color_identity,
+            keywords = excluded.keywords,
+            set_code = excluded.set_code,
+            set_name = excluded.set_name,
+            rarity = excluded.rarity,
+            artist = excluded.artist,
+            released_at = excluded.released_at,
+            loyalty = excluded.loyalty,
+            flavor_text = excluded.flavor_text,
+            collector_number = excluded.collector_number,
+            watermark = excluded.watermark,
+            produced_mana = excluded.produced_mana,
+            image_uris = excluded.image_uris,
+            legalities = excluded.legalities,
+            prices = excluded.prices,
+            raw_data = excluded.raw_data
     """
 
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
