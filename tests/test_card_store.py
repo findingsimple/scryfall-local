@@ -827,6 +827,78 @@ class TestCardStorePagination:
 
             store.close()
 
+    def test_count_matches_all_cards(self, sample_cards: list[dict[str, Any]]):
+        """count_matches should return total card count for empty query."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(raw_query="")
+            count = store.count_matches(parsed)
+
+            assert count == len(sample_cards)
+
+            store.close()
+
+    def test_count_matches_with_filter(self, sample_cards: list[dict[str, Any]]):
+        """count_matches should return filtered count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"type": "creature"},
+                raw_query="t:creature",
+            )
+            count = store.count_matches(parsed)
+            results = store.execute_query(parsed, limit=100)
+
+            assert count == len(results)
+
+            store.close()
+
+    def test_count_matches_independent_of_limit(self, sample_cards: list[dict[str, Any]]):
+        """count_matches should return total, not limited count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(raw_query="")
+
+            # Get limited results
+            results = store.execute_query(parsed, limit=2)
+            # Get total count
+            count = store.count_matches(parsed)
+
+            # count should be total cards, not limited to 2
+            assert count == len(sample_cards)
+            assert len(results) == 2
+            assert count > len(results)
+
+            store.close()
+
+    def test_count_matches_with_or_query(self, sample_cards: list[dict[str, Any]]):
+        """count_matches should work with OR queries."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={},
+                or_groups=[
+                    [{"type": "creature"}],
+                    [{"type": "instant"}],
+                ],
+                has_or_clause=True,
+                raw_query="t:creature OR t:instant",
+            )
+            count = store.count_matches(parsed)
+            results = store.execute_query(parsed, limit=100)
+
+            assert count == len(results)
+
+            store.close()
+
 
 class TestCardStoreConcurrentAccess:
     """Test concurrent database access."""

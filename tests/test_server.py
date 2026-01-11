@@ -125,6 +125,24 @@ class TestServerSearchCards:
                     assert len(page1_ids & page2_ids) == 0
 
     @pytest.mark.asyncio
+    async def test_search_cards_total_count_is_actual_total(self, sample_cards: list[dict[str, Any]]):
+        """total_count should be actual total matches, not page size."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # Request only 2 cards
+                result = await server.call_tool(
+                    "search_cards",
+                    {"query": "", "limit": 2},
+                )
+
+                # total_count should be total cards, not 2
+                assert result["total_count"] == len(sample_cards)
+                assert len(result["cards"]) == 2
+                assert result["total_count"] > len(result["cards"])
+
+    @pytest.mark.asyncio
     async def test_search_cards_error_handling(self, sample_cards: list[dict[str, Any]]):
         """Should return error for invalid queries."""
         with tempfile.TemporaryDirectory() as tmpdir:

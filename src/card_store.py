@@ -804,6 +804,58 @@ class CardStore:
         cursor.execute(query, params)
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
+    def count_matches(self, parsed: ParsedQuery) -> int:
+        """Count total matching cards for a query (without pagination).
+
+        Args:
+            parsed: ParsedQuery object with filters
+
+        Returns:
+            Total count of matching cards
+        """
+        cursor = self._conn.cursor()
+
+        # No filters - count all cards
+        if parsed.is_empty and not parsed.has_or_clause:
+            cursor.execute("SELECT COUNT(*) FROM cards")
+            return cursor.fetchone()[0]
+
+        # Handle OR queries
+        if parsed.has_or_clause and parsed.or_groups:
+            group_clauses = []
+            all_params: list[Any] = []
+
+            for group_filters in parsed.or_groups:
+                merged: dict[str, Any] = {}
+                for f in group_filters:
+                    merged.update(f)
+
+                conditions, params = self._build_conditions_for_filters(merged)
+                if conditions:
+                    group_clauses.append(f"({' AND '.join(conditions)})")
+                    all_params.extend(params)
+
+            if group_clauses:
+                where_clause = " OR ".join(group_clauses)
+                query = f"SELECT COUNT(*) FROM cards WHERE {where_clause}"
+                cursor.execute(query, all_params)
+                return cursor.fetchone()[0]
+            else:
+                return 0
+
+        # Standard AND query (no OR)
+        conditions, params = self._build_conditions_for_filters(parsed.filters)
+
+        if conditions:
+            where_clause = " AND ".join(conditions)
+            query = f"SELECT COUNT(*) FROM cards WHERE {where_clause}"
+        else:
+            query = "SELECT COUNT(*) FROM cards"
+            params = []
+
+        cursor.execute(query, params)
+        return cursor.fetchone()[0]
+
     def get_random_card(self, parsed: ParsedQuery | None = None) -> dict[str, Any] | None:
         """Get a random card, optionally filtered.
 

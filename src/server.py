@@ -271,12 +271,13 @@ class ScryfallServer:
 
         store = self._get_store()
         cards = store.execute_query(parsed, limit=limit, offset=offset)
+        total_count = store.count_matches(parsed)
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         return {
             "cards": cards,
-            "total_count": len(cards),
+            "total_count": total_count,
             "query_time_ms": elapsed_ms,
             "offset": offset,
         }
