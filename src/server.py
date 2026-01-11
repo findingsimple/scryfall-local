@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import ijson
 import mcp.types as types
 from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
@@ -442,7 +441,19 @@ class ScryfallServer:
 
         Returns:
             Number of cards imported
+
+        Raises:
+            ImportError: If ijson is not installed (required for streaming JSON parsing)
         """
+        # Lazy import ijson - only needed for data refresh, not basic queries
+        try:
+            import ijson
+        except ImportError as e:
+            raise ImportError(
+                "ijson is required for importing card data. "
+                "Install it with: pip install ijson"
+            ) from e
+
         # Close existing store connection before reimporting
         if self._store is not None:
             self._store.close()
