@@ -107,6 +107,45 @@ class TestCardStoreInsert:
 
             store.close()
 
+    def test_insert_cards_atomic_rollback(self, sample_cards: list[dict[str, Any]]):
+        """Batch insert should rollback all cards if one fails."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Create a batch with a bad card in the middle
+            good_cards = sample_cards[:3]
+            bad_card = {"id": None, "name": None}  # Will fail - NULL id/name
+            more_cards = sample_cards[3:5]
+            batch = good_cards + [bad_card] + more_cards
+
+            # Insert should fail
+            with pytest.raises(Exception):
+                store.insert_cards(batch)
+
+            # No cards should be inserted due to rollback
+            assert store.get_card_count() == 0
+
+            store.close()
+
+    def test_insert_cards_commits_on_success(self, sample_cards: list[dict[str, Any]]):
+        """Batch insert should commit all cards on success."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(sample_cards)
+
+            # All cards should be committed
+            assert store.get_card_count() == len(sample_cards)
+
+            # Verify they persist (close and reopen)
+            store.close()
+            store = CardStore(db_path)
+            assert store.get_card_count() == len(sample_cards)
+
+            store.close()
+
 
 class TestCardStoreQueryByName:
     """Test name-based queries."""

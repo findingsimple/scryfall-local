@@ -448,15 +448,26 @@ class CardStore:
         self._conn.commit()
 
     def insert_cards(self, cards: list[dict[str, Any]]) -> None:
-        """Insert multiple cards into the database.
+        """Insert multiple cards into the database atomically.
+
+        Uses explicit transaction to ensure all-or-nothing insert behavior.
+        If any card fails to insert, the entire batch is rolled back.
 
         Args:
             cards: List of card data dictionaries
+
+        Raises:
+            Exception: Re-raises any exception after rolling back the transaction
         """
         cursor = self._conn.cursor()
-        for card in cards:
-            cursor.execute(self._INSERT_SQL, self._card_to_params(card))
-        self._conn.commit()
+        cursor.execute("BEGIN TRANSACTION")
+        try:
+            for card in cards:
+                cursor.execute(self._INSERT_SQL, self._card_to_params(card))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def _row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert database row to card dictionary."""
