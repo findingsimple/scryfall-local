@@ -58,10 +58,11 @@ Claude Code automatically starts the server - no need to run it manually.
 ## Running Tests
 
 Tests are written TDD-style with pytest:
-- `tests/test_query_parser.py` - Query syntax parsing (42 tests)
-- `tests/test_card_store.py` - SQLite storage (32 tests)
-- `tests/test_data_manager.py` - Download/caching (14 tests)
-- `tests/test_server.py` - MCP server tools (20 tests)
+- `tests/test_query_parser.py` - Query syntax parsing
+- `tests/test_card_store.py` - SQLite storage (110+ tests)
+- `tests/test_data_manager.py` - Download/caching
+- `tests/test_server.py` - MCP server tools
+- `tests/test_cli.py` - CLI commands
 
 ```bash
 pytest -v                           # Run all tests
@@ -79,6 +80,7 @@ Supported Scryfall syntax:
 - **Oracle Text**: `o:flying`, `o:"enters the battlefield"`
 - **Set**: `set:neo`, `e:m19`
 - **Rarity**: `r:mythic`, `r:rare`
+- **Layout**: `layout:transform`, `layout:adventure`, `layout:modal_dfc`
 - **Boolean**: implicit AND, `OR`, `-` (negation)
 
 See `SUPPORTED_SYNTAX.md` for full documentation.
@@ -111,7 +113,7 @@ When a field is used for filtering or should appear in search results, add it as
 - Fields visible in search results
 - Cleaner filter code
 
-Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`.
+Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`, `layout`, `produced_mana`, `watermark`.
 
 The `raw_data` column stores the complete Scryfall JSON for any fields not yet promoted to columns.
 
