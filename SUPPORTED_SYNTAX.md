@@ -332,6 +332,39 @@ Supported blocks: ice age, mirage, tempest, urza, masques, invasion, odyssey, on
 
 Common watermarks: phyrexian, mirran, selesnya, dimir, golgari, boros, orzhov, izzet, gruul, azorius, simic, rakdos, riveteers, obscura, maestros, cabaretti, brokers.
 
+### Layout
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `layout:type` | Cards with specific layout | `layout:transform` |
+| `-layout:type` | Cards without layout | `-layout:normal` |
+
+**Layout Types:**
+- `normal` - Standard single-faced cards
+- `transform` - Double-faced cards that transform (e.g., Delver of Secrets)
+- `modal_dfc` - Modal double-faced cards (e.g., Shatterskull Smashing)
+- `split` - Split cards (e.g., Fire // Ice)
+- `adventure` - Adventure cards (e.g., Bonecrusher Giant)
+- `flip` - Flip cards (e.g., Akki Lavarunner)
+- `meld` - Meld cards (e.g., Bruna, the Fading Light)
+- `leveler` - Level Up cards
+- `saga` - Saga enchantments
+- `class` - Class enchantments
+- `prototype` - Prototype cards
+- `reversible_card` - Reversible cards
+
+**Examples:**
+```
+# Find all transform cards
+layout:transform
+
+# Find adventure cards that are creatures
+layout:adventure t:creature
+
+# Find all double-faced cards (transform or modal)
+layout:transform OR layout:modal_dfc
+```
+
 ## Planned Features
 
 Features that could be implemented to achieve fuller Scryfall parity:
@@ -371,10 +404,6 @@ Features that could be implemented to achieve fuller Scryfall parity:
 - [ ] **border: filter** - Card border color
   - Syntax: `border:black`, `border:white`, `border:silver`, `border:gold`, `border:borderless`
   - Requires `border_color` field from raw_data
-
-- [ ] **layout: filter** - Card layout type
-  - Syntax: `is:split`, `is:flip`, `is:transform`, `is:mdfc`, `is:meld`, `is:leveler`, `is:saga`, `is:adventure`, `is:class`
-  - Requires `layout` field from raw_data
 
 - [ ] **date: filter** - Exact release date
   - Syntax: `date:2023-01-01`, `date>=2020-06-15`, `date<2019-01-01`
@@ -439,7 +468,6 @@ Features that could be implemented to achieve fuller Scryfall parity:
 **Database columns that may need adding:**
 - `frame` (text) - frame style
 - `border_color` (text) - border color
-- `layout` (text) - card layout
 - `lang` (text) - language code
 - `games` (text/JSON) - platform availability
 - `reserved` (boolean) - reserved list

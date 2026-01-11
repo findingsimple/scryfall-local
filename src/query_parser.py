@@ -220,6 +220,8 @@ TOKEN_PATTERNS = [
     (r'produces:([a-zA-Z]+)', 'PRODUCES'),
     # Watermark filter (e.g., wm:phyrexian, watermark:selesnya)
     (r'(?:wm|watermark):([a-zA-Z]+)', 'WATERMARK'),
+    # Layout filter (e.g., layout:transform, layout:modal_dfc, layout:adventure)
+    (r'layout:([a-zA-Z_]+)', 'LAYOUT'),
     (r'(?:kw|keyword|keywords):"([^"]+)"', 'KEYWORD_QUOTED'),
     (r'(?:kw|keyword|keywords):([a-zA-Z]+)', 'KEYWORD'),
     (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
@@ -337,7 +339,7 @@ class QueryParser:
                     elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
                     elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
-                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK'):
+                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
                         tokens.append((token_type, match.group(1)))
@@ -489,6 +491,7 @@ class QueryParser:
             'BLOCK': 'block',
             'PRODUCES': 'produces',
             'WATERMARK': 'watermark',
+            'LAYOUT': 'layout',
             'KEYWORD': 'keyword',
             'POWER': 'power',
             'TOUGHNESS': 'toughness',
@@ -593,6 +596,10 @@ class QueryParser:
 
         if token_type == 'WATERMARK':
             # Watermark name (e.g., phyrexian, selesnya)
+            return value.lower()
+
+        if token_type == 'LAYOUT':
+            # Layout type (e.g., transform, modal_dfc, adventure)
             return value.lower()
 
         return None

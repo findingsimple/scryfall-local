@@ -223,7 +223,7 @@ class CardStore:
             # Note: Column names are from a fixed allowlist, not user input
             _MIGRATION_COLUMNS = frozenset({
                 "keywords", "artist", "released_at", "loyalty",
-                "flavor_text", "collector_number", "watermark", "produced_mana"
+                "flavor_text", "collector_number", "watermark", "produced_mana", "layout"
             })
             migrations = [
                 ("keywords", "$.keywords"),
@@ -234,6 +234,7 @@ class CardStore:
                 ("collector_number", "$.collector_number"),
                 ("watermark", "$.watermark"),
                 ("produced_mana", "$.produced_mana"),
+                ("layout", "$.layout"),
             ]
 
             for col_name, json_path in migrations:
@@ -274,6 +275,7 @@ class CardStore:
                 collector_number TEXT,
                 watermark TEXT,  -- Guild/faction watermark (e.g., "selesnya", "phyrexian")
                 produced_mana TEXT,  -- JSON array of mana colors this card produces
+                layout TEXT,  -- Card layout (normal, transform, modal_dfc, split, adventure, etc.)
                 image_uris TEXT,  -- JSON object
                 legalities TEXT,  -- JSON object
                 prices TEXT,  -- JSON object
@@ -294,6 +296,7 @@ class CardStore:
         # Note: LIKE '%"U"%' queries can't use B-tree indexes efficiently
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_colors ON cards(colors)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_color_identity ON cards(color_identity)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_layout ON cards(layout)")
 
         # FTS5 virtual table for oracle text search
         cursor.execute("""
@@ -369,8 +372,8 @@ class CardStore:
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, artist, released_at, loyalty, flavor_text, collector_number,
-            watermark, produced_mana, image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            watermark, produced_mana, layout, image_uris, legalities, prices, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             oracle_id = excluded.oracle_id,
             name = excluded.name,
@@ -393,6 +396,7 @@ class CardStore:
             collector_number = excluded.collector_number,
             watermark = excluded.watermark,
             produced_mana = excluded.produced_mana,
+            layout = excluded.layout,
             image_uris = excluded.image_uris,
             legalities = excluded.legalities,
             prices = excluded.prices,
@@ -460,6 +464,7 @@ class CardStore:
             card.get("collector_number"),
             card.get("watermark"),
             json.dumps(card.get("produced_mana", []), cls=DecimalEncoder),
+            layout,  # Already extracted above for DFC handling
             json.dumps(card.get("image_uris", {}), cls=DecimalEncoder),
             json.dumps(card.get("legalities", {}), cls=DecimalEncoder),
             json.dumps(card.get("prices", {}), cls=DecimalEncoder),
@@ -1281,6 +1286,19 @@ class CardStore:
             watermark_not_value = filters["watermark_not"]
             conditions.append("(watermark IS NULL OR LOWER(watermark) != ?)")
             params.append(watermark_not_value.lower())
+
+        # Layout filter (e.g., layout:transform, layout:adventure)
+        # Uses exact match since layouts are fixed values
+        if "layout" in filters:
+            layout_value = filters["layout"]
+            conditions.append("LOWER(layout) = ?")
+            params.append(layout_value.lower())
+
+        # Layout NOT filter
+        if "layout_not" in filters:
+            layout_not_value = filters["layout_not"]
+            conditions.append("(layout IS NULL OR LOWER(layout) != ?)")
+            params.append(layout_not_value.lower())
 
         # Block filter (e.g., b:innistrad)
         if "block" in filters:

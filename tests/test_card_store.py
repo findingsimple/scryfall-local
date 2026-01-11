@@ -2062,3 +2062,145 @@ class TestDoubleFacedCards:
             assert bolt["mana_cost"] == "{R}"
 
             store.close()
+
+
+class TestLayoutFilter:
+    """Test layout field search functionality."""
+
+    def test_layout_filter_transform(self, double_faced_cards: list[dict[str, Any]]):
+        """Should find transform cards by layout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            # Search for transform cards
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+            parsed = parser.parse("layout:transform")
+            results = store.execute_query(parsed)
+
+            # Should find Delver and Jace (both are transform)
+            names = [r["name"] for r in results]
+            assert len(results) == 2
+            assert any("Delver" in name for name in names)
+            assert any("Jace" in name for name in names)
+
+            store.close()
+
+    def test_layout_filter_modal_dfc(self, double_faced_cards: list[dict[str, Any]]):
+        """Should find modal DFC cards by layout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+            parsed = parser.parse("layout:modal_dfc")
+            results = store.execute_query(parsed)
+
+            # Should find Shatterskull Smashing
+            assert len(results) == 1
+            assert "Shatterskull" in results[0]["name"]
+
+            store.close()
+
+    def test_layout_filter_adventure(self, double_faced_cards: list[dict[str, Any]]):
+        """Should find adventure cards by layout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+            parsed = parser.parse("layout:adventure")
+            results = store.execute_query(parsed)
+
+            # Should find Bonecrusher Giant
+            assert len(results) == 1
+            assert "Bonecrusher" in results[0]["name"]
+
+            store.close()
+
+    def test_layout_filter_split(self, double_faced_cards: list[dict[str, Any]]):
+        """Should find split cards by layout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+            parsed = parser.parse("layout:split")
+            results = store.execute_query(parsed)
+
+            # Should find Fire // Ice
+            assert len(results) == 1
+            assert "Fire" in results[0]["name"]
+
+            store.close()
+
+    def test_layout_not_filter(self, double_faced_cards: list[dict[str, Any]]):
+        """Should exclude cards with negated layout filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+            parsed = parser.parse("-layout:transform")
+            results = store.execute_query(parsed)
+
+            # Should find all non-transform cards (3 cards)
+            names = [r["name"] for r in results]
+            assert len(results) == 3
+            assert not any("Delver" in name for name in names)
+            assert not any("Jace" in name for name in names)
+
+            store.close()
+
+    def test_layout_in_result(self, double_faced_cards: list[dict[str, Any]]):
+        """Layout should be included in query results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            card = store.get_card_by_name("Delver of Secrets // Insectile Aberration")
+            assert card is not None
+            assert card["layout"] == "transform"
+
+            card = store.get_card_by_name("Bonecrusher Giant // Stomp")
+            assert card is not None
+            assert card["layout"] == "adventure"
+
+            store.close()
+
+    def test_layout_combined_with_other_filters(self, double_faced_cards: list[dict[str, Any]]):
+        """Layout filter should work with other filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(double_faced_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Transform cards that are creatures
+            parsed = parser.parse("layout:transform t:creature")
+            results = store.execute_query(parsed)
+
+            # Both Delver and Jace have creature sides
+            assert len(results) == 2
+
+            store.close()
