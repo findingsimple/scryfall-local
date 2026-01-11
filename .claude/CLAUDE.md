@@ -102,6 +102,19 @@ See `SUPPORTED_SYNTAX.md` for full documentation.
 
 The `data/` directory is gitignored.
 
+## Database Design Principles
+
+**Favor separate columns over `raw_data` for queried fields.**
+
+When a field is used for filtering or should appear in search results, add it as a dedicated column in the `cards` table rather than relying on `json_extract(raw_data, ...)`. This provides:
+- Better query performance (can be indexed)
+- Fields visible in search results
+- Cleaner filter code
+
+Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`.
+
+The `raw_data` column stores the complete Scryfall JSON for any fields not yet promoted to columns.
+
 ## Context7 MCP Integration
 
 Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.

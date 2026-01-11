@@ -33,7 +33,7 @@ class CardStore:
         """Create database tables and indexes."""
         cursor = self._conn.cursor()
 
-        # Migration: Add keywords column if table exists but column doesn't
+        # Migration: Add columns if table exists but columns don't
         cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type='table' AND name='cards'
@@ -41,15 +41,26 @@ class CardStore:
         if cursor.fetchone():
             cursor.execute("PRAGMA table_info(cards)")
             columns = [row[1] for row in cursor.fetchall()]
-            if "keywords" not in columns:
-                cursor.execute("ALTER TABLE cards ADD COLUMN keywords TEXT")
-                # Populate from raw_data for existing cards
-                cursor.execute("""
-                    UPDATE cards
-                    SET keywords = json_extract(raw_data, '$.keywords')
-                    WHERE keywords IS NULL
-                """)
-                self._conn.commit()
+
+            # Define migrations: (column_name, json_path, optional_transform)
+            migrations = [
+                ("keywords", "$.keywords", None),
+                ("artist", "$.artist", None),
+                ("released_at", "$.released_at", None),
+                ("loyalty", "$.loyalty", None),
+                ("flavor_text", "$.flavor_text", None),
+                ("collector_number", "$.collector_number", None),
+            ]
+
+            for col_name, json_path, _ in migrations:
+                if col_name not in columns:
+                    cursor.execute(f"ALTER TABLE cards ADD COLUMN {col_name} TEXT")
+                    cursor.execute(f"""
+                        UPDATE cards
+                        SET {col_name} = json_extract(raw_data, '{json_path}')
+                        WHERE {col_name} IS NULL
+                    """)
+            self._conn.commit()
 
         # Main cards table
         cursor.execute("""
@@ -69,6 +80,11 @@ class CardStore:
                 set_code TEXT,
                 set_name TEXT,
                 rarity TEXT,
+                artist TEXT,
+                released_at TEXT,  -- Date string like "2024-08-02"
+                loyalty TEXT,  -- Planeswalker loyalty (can be "X" or number)
+                flavor_text TEXT,
+                collector_number TEXT,
                 image_uris TEXT,  -- JSON object
                 legalities TEXT,  -- JSON object
                 prices TEXT,  -- JSON object
@@ -82,6 +98,8 @@ class CardStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cmc ON cards(cmc)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_set ON cards(set_code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_rarity ON cards(rarity)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_artist ON cards(artist)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_released_at ON cards(released_at)")
 
         # FTS5 virtual table for oracle text search
         cursor.execute("""
@@ -153,8 +171,9 @@ class CardStore:
         INSERT OR REPLACE INTO cards (
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
-            rarity, image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            rarity, artist, released_at, loyalty, flavor_text, collector_number,
+            image_uris, legalities, prices, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
@@ -182,6 +201,11 @@ class CardStore:
             card.get("set"),
             card.get("set_name"),
             card.get("rarity"),
+            card.get("artist"),
+            card.get("released_at"),
+            card.get("loyalty"),
+            card.get("flavor_text"),
+            card.get("collector_number"),
             json.dumps(card.get("image_uris", {})),
             json.dumps(card.get("legalities", {})),
             json.dumps(card.get("prices", {})),
@@ -569,10 +593,10 @@ class CardStore:
             flavor_values = filters["flavor_text"]
             if isinstance(flavor_values, list):
                 for flavor_val in flavor_values:
-                    conditions.append("LOWER(json_extract(raw_data, '$.flavor_text')) LIKE ?")
+                    conditions.append("LOWER(flavor_text) LIKE ?")
                     params.append(f"%{flavor_val.lower()}%")
             else:
-                conditions.append("LOWER(json_extract(raw_data, '$.flavor_text')) LIKE ?")
+                conditions.append("LOWER(flavor_text) LIKE ?")
                 params.append(f"%{flavor_values.lower()}%")
 
         # Set filter
@@ -632,10 +656,8 @@ class CardStore:
             operator = loyalty_filter.get("operator", "=")
             op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
             sql_op = op_map.get(operator, "=")
-            # loyalty is stored in raw_data as a string like "3" or "X"
-            conditions.append(
-                f"CAST(json_extract(raw_data, '$.loyalty') AS INTEGER) {sql_op} ?"
-            )
+            # loyalty is stored as a string like "3" or "X"
+            conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
             params.append(value)
 
         # Collector number filter
@@ -645,15 +667,13 @@ class CardStore:
             operator = cn_filter.get("operator", "=")
             if operator == "=":
                 # Exact match on collector number
-                conditions.append("json_extract(raw_data, '$.collector_number') = ?")
+                conditions.append("collector_number = ?")
                 params.append(str(value))
             else:
                 # For range comparisons, try numeric if possible
                 op_map = {">=": ">=", "<=": "<=", ">": ">", "<": "<"}
                 sql_op = op_map.get(operator, "=")
-                conditions.append(
-                    f"CAST(json_extract(raw_data, '$.collector_number') AS INTEGER) {sql_op} ?"
-                )
+                conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
                 params.append(int(value) if str(value).isdigit() else value)
 
         # Price filter
@@ -698,8 +718,7 @@ class CardStore:
         # Artist filter
         if "artist" in filters:
             artist_value = filters["artist"]
-            # artist is stored in raw_data as a string
-            conditions.append("LOWER(json_extract(raw_data, '$.artist')) LIKE ?")
+            conditions.append("LOWER(artist) LIKE ?")
             params.append(f"%{artist_value.lower()}%")
 
         # Year filter (based on released_at date)
@@ -711,9 +730,7 @@ class CardStore:
             sql_op = op_map.get(operator, "=")
             # released_at is stored as a date string like "2024-08-02"
             # Extract year using substr (first 4 characters)
-            conditions.append(
-                f"CAST(substr(json_extract(raw_data, '$.released_at'), 1, 4) AS INTEGER) {sql_op} ?"
-            )
+            conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
             params.append(value)
 
         # Build and execute query

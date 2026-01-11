@@ -132,6 +132,36 @@ Check the status of the local data cache.
 ### refresh_data
 Trigger a data refresh if updates are available.
 
+## Card Response Fields
+
+Each card returned includes these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Scryfall card ID |
+| `oracle_id` | string | Oracle ID (same across printings) |
+| `name` | string | Card name |
+| `mana_cost` | string | Mana cost (e.g., "{2}{U}{U}") |
+| `cmc` | number | Mana value |
+| `type_line` | string | Full type line |
+| `oracle_text` | string | Rules text |
+| `power` | string | Power (creatures) |
+| `toughness` | string | Toughness (creatures) |
+| `loyalty` | string | Starting loyalty (planeswalkers) |
+| `colors` | array | Card colors (W, U, B, R, G) |
+| `color_identity` | array | Commander color identity |
+| `keywords` | array | Keyword abilities |
+| `set` | string | Set code |
+| `set_name` | string | Full set name |
+| `rarity` | string | common, uncommon, rare, mythic |
+| `artist` | string | Card artist |
+| `released_at` | string | Release date (YYYY-MM-DD) |
+| `flavor_text` | string | Flavor text |
+| `collector_number` | string | Collector number |
+| `image_uris` | object | Image URLs (small, normal, large, etc.) |
+| `legalities` | object | Format legality map |
+| `prices` | object | Price data (usd, eur, tix) |
+
 ## Query Syntax
 
 See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
