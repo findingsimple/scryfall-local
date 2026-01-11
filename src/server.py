@@ -19,7 +19,7 @@ import mcp.server.stdio
 
 from src.card_store import CardStore
 from src.data_manager import DataManager
-from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX
+from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
 
 
 @dataclass
@@ -125,10 +125,7 @@ class ScryfallServer:
         return [
             Tool(
                 name="search_cards",
-                description="Search for Magic: The Gathering cards using Scryfall syntax. "
-                "Supports: name, colors (c:blue), mana value (cmc:3), type (t:creature), "
-                "oracle text (o:flying), set (set:neo), rarity (r:mythic). "
-                "Boolean operators: implicit AND, OR, - (negation).",
+                description=f"Search for Magic: The Gathering cards using Scryfall syntax. {SYNTAX_SUMMARY}",
                 inputSchema={
                     "type": "object",
                     "properties": {

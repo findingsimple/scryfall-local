@@ -11,6 +11,15 @@ from typing import Any
 
 
 # Supported syntax for error messages
+# Brief summary for tool descriptions
+SYNTAX_SUMMARY = (
+    "Supports: name, colors (c:blue), mana value (cmc:3), type (t:creature), "
+    "oracle text (o:flying), set (set:neo), rarity (r:mythic), format (f:modern), "
+    "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023). "
+    "Boolean operators: implicit AND, OR, - (negation), (parentheses)."
+)
+
+# Detailed list for error messages
 SUPPORTED_SYNTAX = [
     'name search: "Lightning Bolt" (exact), bolt (partial), !"Exact Name" (strict)',
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
