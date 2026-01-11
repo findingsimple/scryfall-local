@@ -27,6 +27,17 @@ VALID_CURRENCIES = frozenset({
     "usd", "usd_foil", "usd_etched", "eur", "eur_foil", "tix"
 })
 
+# Operator mapping for SQL comparisons (: is treated as = for Scryfall compatibility)
+OPERATOR_MAP = {
+    "=": "=",
+    ":": "=",
+    ">=": ">=",
+    "<=": "<=",
+    ">": ">",
+    "<": "<",
+    "!=": "!=",
+}
+
 
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder that handles Decimal objects from ijson streaming parser."""
@@ -398,17 +409,7 @@ class CardStore:
             List of matching card dictionaries
         """
         cursor = self._conn.cursor()
-
-        op_map = {
-            "=": "=",
-            ":": "=",
-            ">=": ">=",
-            "<=": "<=",
-            ">": ">",
-            "<": "<",
-            "!=": "!=",
-        }
-        sql_op = op_map.get(operator, "=")
+        sql_op = OPERATOR_MAP.get(operator, "=")
 
         cursor.execute(
             f"SELECT * FROM cards WHERE cmc {sql_op} ? LIMIT ?",
@@ -602,8 +603,7 @@ class CardStore:
             cmc_filter = filters["cmc"]
             value = cmc_filter.get("value", 0)
             operator = cmc_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
+            sql_op = OPERATOR_MAP.get(operator, "=")
             conditions.append(f"cmc {sql_op} ?")
             params.append(value)
 
@@ -724,8 +724,7 @@ class CardStore:
             power_filter = filters["power"]
             value = power_filter.get("value")
             operator = power_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
+            sql_op = OPERATOR_MAP.get(operator, "=")
             if value == "*":
                 conditions.append("power = '*'")
             else:
@@ -737,8 +736,7 @@ class CardStore:
             toughness_filter = filters["toughness"]
             value = toughness_filter.get("value")
             operator = toughness_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
+            sql_op = OPERATOR_MAP.get(operator, "=")
             if value == "*":
                 conditions.append("toughness = '*'")
             else:
@@ -750,8 +748,7 @@ class CardStore:
             loyalty_filter = filters["loyalty"]
             value = loyalty_filter.get("value")
             operator = loyalty_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
+            sql_op = OPERATOR_MAP.get(operator, "=")
             conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
             params.append(value)
 
@@ -764,8 +761,7 @@ class CardStore:
                 conditions.append("collector_number = ?")
                 params.append(str(value))
             else:
-                op_map = {">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-                sql_op = op_map.get(operator, "=")
+                sql_op = OPERATOR_MAP.get(operator, "=")
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
                 params.append(int(value) if str(value).isdigit() else value)
 
@@ -776,8 +772,7 @@ class CardStore:
             value = price_filter.get("value")
             operator = price_filter.get("operator", "=")
             if currency in VALID_CURRENCIES:
-                op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-                sql_op = op_map.get(operator, "=")
+                sql_op = OPERATOR_MAP.get(operator, "=")
                 conditions.append(
                     f"CAST(json_extract(prices, '$.{currency}') AS REAL) {sql_op} ?"
                 )
@@ -816,8 +811,7 @@ class CardStore:
             year_filter = filters["year"]
             value = year_filter.get("value")
             operator = year_filter.get("operator", "=")
-            op_map = {"=": "=", ":": "=", ">=": ">=", "<=": "<=", ">": ">", "<": "<"}
-            sql_op = op_map.get(operator, "=")
+            sql_op = OPERATOR_MAP.get(operator, "=")
             conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
             params.append(value)
 
