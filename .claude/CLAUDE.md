@@ -134,3 +134,10 @@ Always use Context7 MCP when I need library/API documentation, code generation, 
 1. Automatically resolve library IDs when a library is mentioned
 2. Fetch documentation proactively when working with libraries
 3. Don't wait for me to ask - use it when it would be helpful
+
+## Future Enhancements
+
+Optional improvements to consider:
+- **ruff** - Fast linting and formatting (replaces flake8/isort/black)
+- **mypy** - Type checking (project already has type hints)
+- **GitHub Actions** - CI workflow for PRs
