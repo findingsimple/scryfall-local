@@ -223,7 +223,7 @@ class DataManager:
 
     async def download_bulk_data(
         self,
-        data_type: str = "all_cards",
+        data_type: str = "oracle_cards",
         progress_callback: Callable[[int, int], None] | None = None,
         max_retries: int = 3,
     ) -> Path:

@@ -266,9 +266,9 @@ def main() -> None:
     )
     download_parser.add_argument(
         "--type",
-        choices=["all_cards", "oracle_cards", "default_cards"],
-        default="all_cards",
-        help="Type of bulk data to download (default: all_cards)",
+        choices=["oracle_cards", "all_cards", "default_cards"],
+        default="oracle_cards",
+        help="Type of bulk data to download (default: oracle_cards)",
     )
     download_parser.add_argument(
         "--force",

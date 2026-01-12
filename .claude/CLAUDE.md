@@ -5,7 +5,7 @@
 A local MCP server that caches Scryfall's Magic: The Gathering card data, enabling Claude to answer questions about MTG cards without hitting Scryfall's rate limits.
 
 - **Primary User**: Claude/AI agents (optimized for agentic use)
-- **Data**: 520,000+ cards from Scryfall bulk data
+- **Data**: ~37,000 unique cards from Scryfall oracle_cards bulk data
 - **Storage**: SQLite with FTS5 for fast text search
 
 ## Architecture
@@ -100,8 +100,8 @@ See `SUPPORTED_SYNTAX.md` for full documentation.
 
 ## Data Files
 
-- `data/cards.db` - SQLite database (~4 GB)
-- `data/*.json` - Downloaded bulk JSON (~2.3 GB)
+- `data/cards.db` - SQLite database (~300 MB for oracle_cards)
+- `data/*.json` - Downloaded bulk JSON (~160 MB for oracle_cards)
 - `data/metadata.json` - Cache metadata
 
 The `data/` directory is gitignored.

@@ -6,7 +6,7 @@ A local MCP (Model Context Protocol) server that caches Scryfall's Magic: The Ga
 
 - **6 MCP Tools**: search_cards, get_card, get_cards_batch, random_card, data_status, refresh_data
 - **Scryfall Query Syntax**: Supports colors, mana value, type, oracle text, set, rarity, and boolean operators
-- **SQLite Storage**: Efficient ~500MB database with FTS5 for fast text search
+- **SQLite Storage**: Efficient database with FTS5 for fast text search (~300MB for oracle_cards)
 - **Security-First**: Parameterized queries, URL validation, path traversal prevention
 - **Agentic-Optimized**: Structured JSON responses, batch operations, helpful error messages
 
@@ -80,11 +80,11 @@ source .venv/bin/activate
 # Check current data status
 python -m src.cli status
 
-# Download bulk card data (~2.3 GB for all_cards)
+# Download bulk card data (~160 MB for oracle_cards)
 python -m src.cli download
 
-# Download a smaller dataset (~160 MB)
-python -m src.cli download --type oracle_cards
+# Download a larger dataset with all printings (~2.3 GB)
+python -m src.cli download --type all_cards
 
 # Force re-download even if data is current
 python -m src.cli download --force
@@ -100,13 +100,13 @@ python -m src.cli import --file path/to/cards.json
 
 | Type | Size | Cards | Description |
 |------|------|-------|-------------|
-| `all_cards` | ~2.3 GB | ~521,000 | Every printing in every language (default) |
-| `oracle_cards` | ~160 MB | ~37,000 | One card per Oracle ID (unique cards only) |
+| `oracle_cards` | ~160 MB | ~37,000 | One card per Oracle ID (unique cards only) - **default** |
+| `all_cards` | ~2.3 GB | ~521,000 | Every printing in every language |
 | `default_cards` | ~500 MB | ~100,000 | Every printing in English |
 
-> **Note:** The default `all_cards` includes every printing of every card. For example, Lightning Bolt has 150+ printings across different sets, promos, and languages. If you only need unique cards (one per Oracle ID), use `oracle_cards` for a much smaller dataset:
+> **Note:** The default `oracle_cards` includes one unique card per Oracle ID - ideal for most use cases. If you need every printing (different sets, promos, languages), use `all_cards`:
 > ```bash
-> python -m src.cli download --type oracle_cards
+> python -m src.cli download --type all_cards
 > ```
 
 #### Workflow
