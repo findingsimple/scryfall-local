@@ -524,8 +524,12 @@ class CardStore:
             if card.get(field):
                 try:
                     card[field] = json.loads(card[field])
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as e:
+                    # Log parsing error but keep raw string as fallback
+                    logger.debug(
+                        "Failed to parse JSON field %s for card %s: %s",
+                        field, card.get("id", "unknown"), e
+                    )
         # Rename set_code to set for API compatibility
         if "set_code" in card:
             card["set"] = card.pop("set_code")
@@ -597,6 +601,7 @@ class CardStore:
             List of matching card dictionaries
         """
         cursor = self._conn.cursor()
+        params: list[Any] = []
 
         if not colors:
             # Colorless cards
@@ -607,14 +612,14 @@ class CardStore:
         elif operator in (":", "=", ">="):
             # Exact color match or "at least these colors"
             # Check that card has all specified colors
-            # Note: colors are validated by query_parser._parse_color_value() to only
-            # contain W, U, B, R, G - no SQL injection risk from f-string formatting
-            conditions = " AND ".join(
-                f"colors LIKE '%\"{c}\"%'" for c in colors
-            )
+            conditions = []
+            for c in colors:
+                conditions.append("colors LIKE ?")
+                params.append(f'%"{c}"%')
+            params.append(limit)
             cursor.execute(
-                f"SELECT * FROM cards WHERE {conditions} LIMIT ?",
-                (limit,),
+                f"SELECT * FROM cards WHERE {' AND '.join(conditions)} LIMIT ?",
+                params,
             )
         elif operator == "<=":
             # Card has at most these colors (subset)
@@ -625,12 +630,14 @@ class CardStore:
 
             if disallowed_colors:
                 # Build NOT LIKE conditions for disallowed colors
-                conditions = " AND ".join(
-                    f"colors NOT LIKE '%\"{c}\"%'" for c in disallowed_colors
-                )
+                conditions = []
+                for c in disallowed_colors:
+                    conditions.append("colors NOT LIKE ?")
+                    params.append(f'%"{c}"%')
+                params.append(limit)
                 cursor.execute(
-                    f"SELECT * FROM cards WHERE {conditions} LIMIT ?",
-                    (limit,),
+                    f"SELECT * FROM cards WHERE {' AND '.join(conditions)} LIMIT ?",
+                    params,
                 )
             else:
                 # All colors allowed, return any cards
@@ -682,6 +689,25 @@ class CardStore:
         )
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
+    @staticmethod
+    def _escape_fts5(text: str) -> str:
+        """Escape text for FTS5 phrase search.
+
+        FTS5 special characters that need handling:
+        - " (double quote) - phrase delimiter, escape by doubling
+        - Other special chars (+, -, *, (, ), :, ^) are safe inside quoted phrases
+
+        The text will be wrapped in double quotes for phrase matching,
+        so we only need to escape internal double quotes.
+
+        Args:
+            text: Raw search text
+
+        Returns:
+            Escaped text safe for use in FTS5 phrase search
+        """
+        return text.replace('"', '""')
+
     def query_by_oracle_text(self, text: str, limit: int = 100) -> list[dict[str, Any]]:
         """Query cards by oracle text using FTS5.
 
@@ -694,11 +720,13 @@ class CardStore:
         """
         cursor = self._conn.cursor()
 
-        # Escape special FTS characters
-        safe_text = text.replace('"', '""')
+        # Escape for FTS5 phrase search
+        safe_text = self._escape_fts5(text)
 
         try:
             # Try FTS5 search first for better performance on exact phrase matches
+            # Wrapping in double quotes makes it a phrase search where special
+            # characters like +, -, *, etc. are treated as literals
             cursor.execute("""
                 SELECT cards.* FROM cards
                 JOIN cards_fts ON cards.id = cards_fts.id

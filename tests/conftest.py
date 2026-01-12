@@ -638,6 +638,112 @@ def double_faced_cards() -> list[dict[str, Any]]:
 
 
 @pytest.fixture
+def unicode_cards() -> list[dict[str, Any]]:
+    """Cards with Unicode/accented characters in names for testing Unicode support.
+
+    These cards test proper handling of:
+    - Accented Latin characters (é, û, ö, etc.)
+    - Apostrophes in various positions
+    - Special characters that could cause encoding issues
+    """
+    return [
+        {
+            "id": "unicode-test-seance",
+            "oracle_id": "unicode-oracle-seance",
+            "name": "Séance",
+            "mana_cost": "{2}{W}{W}",
+            "cmc": 4.0,
+            "type_line": "Enchantment",
+            "oracle_text": "At the beginning of each upkeep, you may exile target creature card from a graveyard. If you do, create a token that's a copy of that card, except it's a Spirit in addition to its other types. Exile it at the beginning of the next end step.",
+            "colors": ["W"],
+            "color_identity": ["W"],
+            "set": "dka",
+            "set_name": "Dark Ascension",
+            "rarity": "rare",
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "0.50"},
+        },
+        {
+            "id": "unicode-test-limdûl",
+            "oracle_id": "unicode-oracle-limdûl",
+            "name": "Lim-Dûl the Necromancer",
+            "mana_cost": "{5}{B}{B}",
+            "cmc": 7.0,
+            "type_line": "Legendary Creature — Human Wizard",
+            "oracle_text": "Whenever a creature an opponent controls dies, you may pay {1}{B}. If you do, return that card to the battlefield under your control. If it's a creature, it's a Zombie in addition to its other creature types.\n{1}{B}: Regenerate target Zombie.",
+            "power": "4",
+            "toughness": "4",
+            "colors": ["B"],
+            "color_identity": ["B"],
+            "keywords": ["Regenerate"],
+            "set": "tsp",
+            "set_name": "Time Spiral",
+            "rarity": "rare",
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "3.00"},
+        },
+        {
+            "id": "unicode-test-urzas",
+            "oracle_id": "unicode-oracle-urzas",
+            "name": "Urza's Tower",
+            "mana_cost": "",
+            "cmc": 0.0,
+            "type_line": "Land — Urza's Tower",
+            "oracle_text": "{T}: Add {C}. If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead.",
+            "colors": [],
+            "color_identity": [],
+            "produced_mana": ["C"],
+            "set": "atq",
+            "set_name": "Antiquities",
+            "rarity": "uncommon",
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "1.00"},
+        },
+        {
+            "id": "unicode-test-marton",
+            "oracle_id": "unicode-oracle-marton",
+            "name": "Márton Stromgald",
+            "mana_cost": "{2}{R}{R}",
+            "cmc": 4.0,
+            "type_line": "Legendary Creature — Human Knight",
+            "oracle_text": "Whenever Márton Stromgald attacks, other attacking creatures get +1/+1 until end of turn for each attacking creature other than Márton Stromgald.",
+            "power": "1",
+            "toughness": "1",
+            "colors": ["R"],
+            "color_identity": ["R"],
+            "set": "ice",
+            "set_name": "Ice Age",
+            "rarity": "rare",
+            "image_uris": {},
+            "legalities": {"legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "15.00"},
+        },
+        {
+            "id": "unicode-test-dandân",
+            "oracle_id": "unicode-oracle-dandân",
+            "name": "Dandân",
+            "mana_cost": "{U}{U}",
+            "cmc": 2.0,
+            "type_line": "Creature — Fish",
+            "oracle_text": "Dandân can't attack unless defending player controls an Island.\nWhen you control no Islands, sacrifice Dandân.",
+            "power": "4",
+            "toughness": "1",
+            "colors": ["U"],
+            "color_identity": ["U"],
+            "set": "arn",
+            "set_name": "Arabian Nights",
+            "rarity": "common",
+            "image_uris": {},
+            "legalities": {"legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "5.00"},
+        },
+    ]
+
+
+@pytest.fixture
 def token_creating_cards() -> list[dict[str, Any]]:
     """Cards that create tokens (with all_parts containing token references).
 

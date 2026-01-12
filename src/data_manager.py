@@ -217,16 +217,24 @@ class DataManager:
         self,
         data_type: str = "all_cards",
         progress_callback: Callable[[int, int], None] | None = None,
+        max_retries: int = 3,
     ) -> Path:
-        """Download bulk data file.
+        """Download bulk data file with retry support.
 
         Args:
             data_type: Type of bulk data to download
             progress_callback: Optional callback for progress updates (downloaded, total)
+            max_retries: Maximum number of retry attempts (default 3)
 
         Returns:
             Path to downloaded file
+
+        Raises:
+            ValueError: If data type is unknown or URL is invalid
+            httpx.HTTPError: If download fails after all retries
         """
+        import asyncio
+
         # Get download info
         info = await self.get_bulk_data_info(data_type)
         if not info:
@@ -246,37 +254,59 @@ class DataManager:
 
         output_path = self.data_dir / filename
 
-        # Download file with validated redirects
-        response = await self._validated_get(download_url, stream=True)
-        try:
-            response.raise_for_status()
+        # Retry loop with exponential backoff
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                # Exponential backoff: 1s, 2s, 4s, etc.
+                delay = 2 ** (attempt - 1)
+                await asyncio.sleep(delay)
 
-            total_size = int(response.headers.get("Content-Length", 0))
-            downloaded = 0
+            try:
+                # Download file with validated redirects
+                response = await self._validated_get(download_url, stream=True)
+                try:
+                    response.raise_for_status()
 
-            with open(output_path, "wb") as f:
-                async for chunk in response.aiter_bytes(chunk_size=8192):
-                    f.write(chunk)
-                    downloaded += len(chunk)
+                    total_size = int(response.headers.get("Content-Length", 0))
+                    downloaded = 0
 
-                    if progress_callback:
-                        progress_callback(downloaded, total_size)
-        finally:
-            await response.aclose()
+                    with open(output_path, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                            downloaded += len(chunk)
 
-        # Save metadata
-        metadata = {
-            "type": data_type,
-            "downloaded_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": info.get("updated_at"),
-            "card_count": 0,  # Will be updated after import
-            "filename": filename,
-        }
+                            if progress_callback:
+                                progress_callback(downloaded, total_size)
 
-        with open(self._metadata_path, "w") as f:
-            json.dump(metadata, f)
+                    # Download successful - save metadata and return
+                    metadata = {
+                        "type": data_type,
+                        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_at": info.get("updated_at"),
+                        "card_count": 0,  # Will be updated after import
+                        "filename": filename,
+                    }
 
-        return output_path
+                    self._write_metadata_atomic(metadata)
+                    return output_path
+
+                finally:
+                    await response.aclose()
+
+            except (httpx.HTTPError, OSError) as e:
+                last_error = e
+                # Remove partial download on error
+                if output_path.exists():
+                    try:
+                        output_path.unlink()
+                    except OSError:
+                        pass
+                # Continue to next retry attempt
+                continue
+
+        # All retries exhausted
+        raise last_error or RuntimeError("Download failed after all retries")
 
     def _load_metadata(self) -> dict[str, Any] | None:
         """Load metadata from file."""
@@ -288,6 +318,35 @@ class DataManager:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             return None
+
+    def _write_metadata_atomic(self, metadata: dict[str, Any]) -> None:
+        """Write metadata file atomically using write-to-temp-then-rename.
+
+        This prevents corruption if the process crashes mid-write.
+
+        Args:
+            metadata: Metadata dictionary to write
+        """
+        import tempfile
+
+        # Write to temp file in same directory (ensures same filesystem for rename)
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=self.data_dir,
+            prefix=".metadata_",
+            suffix=".tmp"
+        )
+        try:
+            with open(temp_fd, "w") as f:
+                json.dump(metadata, f)
+            # Atomic rename (on POSIX systems)
+            Path(temp_path).replace(self._metadata_path)
+        except Exception:
+            # Clean up temp file on error
+            try:
+                Path(temp_path).unlink()
+            except OSError:
+                pass
+            raise
 
     async def is_cache_stale(self) -> bool:
         """Check if local cache is stale compared to server.
@@ -367,6 +426,4 @@ class DataManager:
         """
         metadata = self._load_metadata() or {}
         metadata["card_count"] = count
-
-        with open(self._metadata_path, "w") as f:
-            json.dump(metadata, f)
+        self._write_metadata_atomic(metadata)

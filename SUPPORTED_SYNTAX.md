@@ -69,6 +69,37 @@ For Commander deck building - includes colors in mana cost, rules text, and colo
 - **Shards:** bant, esper, grixis, jund, naya
 - **Wedges:** abzan, jeskai, sultai, mardu, temur
 
+### Negation Semantics for Colors
+
+When negating color or color identity filters, the behavior is as follows:
+
+| Syntax | Meaning | Returns |
+|--------|---------|---------|
+| `-c:blue` | NOT blue | Cards without blue in their colors |
+| `-c:urg` | NOT (blue AND red AND green) | Cards missing ANY of U, R, or G |
+| `-id:esper` | NOT (white AND blue AND black) | Cards missing ANY of W, U, or B in identity |
+
+**Important:** Negation excludes cards that have ANY of the specified colors, not cards that have ALL of them. This means:
+- `-c:urg` returns cards that are NOT blue OR NOT red OR NOT green (i.e., missing at least one)
+- To find cards that aren't exactly Temur-colored, use a different approach
+
+**Examples:**
+```
+# Cards that aren't blue (no blue anywhere in colors)
+-c:blue
+
+# Cards that don't have ALL of red, green, and blue
+# (This includes mono-red, mono-green, Gruul, etc.)
+-c:urg
+
+# Cards that can't go in an Esper commander deck
+# (Has colors outside of WUB)
+-id<=esper
+
+# Colorless cards (no colors at all)
+c:colorless
+```
+
 ### Mana Value (CMC)
 
 | Syntax | Description | Example |

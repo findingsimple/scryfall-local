@@ -2447,3 +2447,146 @@ class TestProducesTokensFilter:
             assert results[0]["name"] == "Grave Titan"
 
             store.close()
+
+
+class TestUnicodeCardNames:
+    """Tests for Unicode and accented character support in card names."""
+
+    def test_search_accented_name_exact(self, unicode_cards: list[dict[str, Any]]):
+        """Exact match should work with accented characters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Exact match with accent
+            parsed = parser.parse('"Séance"')
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Séance"
+
+            store.close()
+
+    def test_search_accented_name_partial(self, unicode_cards: list[dict[str, Any]]):
+        """Partial match should work with accented characters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Partial match with accent
+            parsed = parser.parse("Séance")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Séance"
+
+            store.close()
+
+    def test_search_hyphenated_accented_name(self, unicode_cards: list[dict[str, Any]]):
+        """Names with hyphens and accents should be searchable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Partial match with hyphen and accent
+            parsed = parser.parse("Lim-Dûl")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Lim-Dûl the Necromancer"
+
+            store.close()
+
+    def test_search_apostrophe_name(self, unicode_cards: list[dict[str, Any]]):
+        """Names with apostrophes should be searchable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Partial match with apostrophe
+            parsed = parser.parse("Urza's")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Urza's Tower"
+
+            store.close()
+
+    def test_search_accented_a(self, unicode_cards: list[dict[str, Any]]):
+        """Names with á character should be searchable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Partial match with accented a
+            parsed = parser.parse("Márton")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Márton Stromgald"
+
+            store.close()
+
+    def test_search_middle_eastern_name(self, unicode_cards: list[dict[str, Any]]):
+        """Names with â character should be searchable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Partial match with â
+            parsed = parser.parse("Dandân")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Dandân"
+
+            store.close()
+
+    def test_unicode_stored_correctly(self, unicode_cards: list[dict[str, Any]]):
+        """Unicode characters should be stored and retrieved correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(unicode_cards)
+
+            # Retrieve by ID to verify storage
+            card = store.get_card_by_id("unicode-test-seance")
+            assert card is not None
+            assert card["name"] == "Séance"
+
+            card = store.get_card_by_id("unicode-test-limdûl")
+            assert card is not None
+            assert card["name"] == "Lim-Dûl the Necromancer"
+
+            store.close()
