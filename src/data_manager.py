@@ -140,6 +140,11 @@ class DataManager:
     def is_valid_download_url(self, url: str) -> bool:
         """Validate that URL is from allowed Scryfall domains.
 
+        Security note: Domain matching uses exact netloc comparison, which includes
+        any port number. URLs with explicit ports (e.g., api.scryfall.com:443) will
+        be rejected even if the base domain is allowed. This is intentional - it
+        provides stricter security at the cost of rejecting some valid URLs.
+
         Args:
             url: URL to validate
 

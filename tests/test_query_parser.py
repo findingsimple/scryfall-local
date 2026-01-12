@@ -19,36 +19,44 @@ class TestQueryParserBasicName:
         parser = QueryParser()
         result = parser.parse("bolt")
 
-        assert result.filters["name_partial"] == "bolt"
+        assert result.filters["name_partial"] == ["bolt"]
 
     def test_parse_partial_name_multiple_words(self):
         """Partial name with multiple unquoted words (implicit AND)."""
         parser = QueryParser()
         result = parser.parse("lightning bolt")
 
-        # Parsed as a partial name filter
-        assert "name_partial" in result.filters
+        # Both words should be captured and ANDed together
+        assert result.filters["name_partial"] == ["lightning", "bolt"]
+
+    def test_parse_partial_name_multiple_words_with_special_chars(self):
+        """Partial name with multiple words including special characters."""
+        parser = QueryParser()
+        result = parser.parse("Lim-Dûl's Vault")
+
+        # Both words should be captured, including hyphen and apostrophe
+        assert result.filters["name_partial"] == ["Lim-Dûl's", "Vault"]
 
     def test_parse_partial_name_with_apostrophe(self):
         """Partial name with apostrophe (e.g., Urza's)."""
         parser = QueryParser()
         result = parser.parse("Urza's")
 
-        assert result.filters["name_partial"] == "Urza's"
+        assert result.filters["name_partial"] == ["Urza's"]
 
     def test_parse_partial_name_with_apostrophe_and_hyphen(self):
         """Partial name with both apostrophe and hyphen."""
         parser = QueryParser()
         result = parser.parse("Al-abara's")
 
-        assert result.filters["name_partial"] == "Al-abara's"
+        assert result.filters["name_partial"] == ["Al-abara's"]
 
     def test_parse_partial_name_apostrophe_with_filter(self):
         """Partial name with apostrophe combined with other filters."""
         parser = QueryParser()
         result = parser.parse("Urza's t:land")
 
-        assert result.filters["name_partial"] == "Urza's"
+        assert result.filters["name_partial"] == ["Urza's"]
         assert result.filters["type"] == ["land"]
 
     def test_parse_partial_name_with_accented_characters(self):
@@ -56,38 +64,38 @@ class TestQueryParserBasicName:
         parser = QueryParser()
 
         result = parser.parse("Séance")
-        assert result.filters["name_partial"] == "Séance"
+        assert result.filters["name_partial"] == ["Séance"]
 
         result = parser.parse("Lim-Dûl")
-        assert result.filters["name_partial"] == "Lim-Dûl"
+        assert result.filters["name_partial"] == ["Lim-Dûl"]
 
     def test_parse_partial_name_with_period(self):
         """Partial name with period (e.g., Dr., B.F.M.)."""
         parser = QueryParser()
         result = parser.parse("Dr.")
 
-        assert result.filters["name_partial"] == "Dr."
+        assert result.filters["name_partial"] == ["Dr."]
 
     def test_parse_partial_name_with_ampersand(self):
         """Partial name with ampersand (e.g., R&D)."""
         parser = QueryParser()
         result = parser.parse("R&D")
 
-        assert result.filters["name_partial"] == "R&D"
+        assert result.filters["name_partial"] == ["R&D"]
 
     def test_parse_partial_name_with_comma(self):
         """Partial name with comma."""
         parser = QueryParser()
         result = parser.parse("Hans,")
 
-        assert result.filters["name_partial"] == "Hans,"
+        assert result.filters["name_partial"] == ["Hans,"]
 
     def test_parse_partial_name_accented_with_filter(self):
         """Partial name with accented characters combined with filter."""
         parser = QueryParser()
         result = parser.parse("Séance t:enchantment")
 
-        assert result.filters["name_partial"] == "Séance"
+        assert result.filters["name_partial"] == ["Séance"]
         assert result.filters["type"] == ["enchantment"]
 
     def test_parse_single_quoted_name(self):

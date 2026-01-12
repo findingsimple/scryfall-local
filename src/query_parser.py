@@ -455,7 +455,7 @@ class QueryParser:
             if filter_key and filter_value is not None:
                 # Handle multiple values for same filter type (e.g., keyword:flying keyword:trample)
                 # These filter types can have multiple values that should be ANDed together
-                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not', 'produces_token', 'produces_token_not'}
+                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not', 'produces_token', 'produces_token_not', 'name_partial', 'name_partial_not'}
 
                 if filter_key in multi_value_filters:
                     if filter_key not in filters:

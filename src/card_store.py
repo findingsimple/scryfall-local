@@ -804,8 +804,23 @@ class CardStore:
             conditions.append("name = ? COLLATE BINARY")
             params.append(filters["name_strict"])
         if "name_partial" in filters:
-            conditions.append("LOWER(name) LIKE ?")
-            params.append(f"%{filters['name_partial'].lower()}%")
+            name_partial_values = filters["name_partial"]
+            if isinstance(name_partial_values, list):
+                for name_val in name_partial_values:
+                    conditions.append("LOWER(name) LIKE ?")
+                    params.append(f"%{name_val.lower()}%")
+            else:
+                conditions.append("LOWER(name) LIKE ?")
+                params.append(f"%{name_partial_values.lower()}%")
+        if "name_partial_not" in filters:
+            name_partial_not_values = filters["name_partial_not"]
+            if isinstance(name_partial_not_values, list):
+                for name_val in name_partial_not_values:
+                    conditions.append("LOWER(name) NOT LIKE ?")
+                    params.append(f"%{name_val.lower()}%")
+            else:
+                conditions.append("LOWER(name) NOT LIKE ?")
+                params.append(f"%{name_partial_not_values.lower()}%")
         if "name_contains" in filters:
             # Support list of partial name matches (for backward compatibility)
             name_values = filters["name_contains"]
