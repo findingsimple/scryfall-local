@@ -549,3 +549,143 @@ class TestServerBackgroundRefresh:
                 result = await server.call_tool("data_status", {})
 
                 assert "refresh_status" not in result
+
+    @pytest.mark.asyncio
+    async def test_refresh_integration_full_flow(self):
+        """Integration test: full refresh downloads data and updates database."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create a bulk data file with test cards
+            test_cards = [
+                {
+                    "id": "new-card-1",
+                    "oracle_id": "new-oracle-1",
+                    "name": "New Test Card Alpha",
+                    "mana_cost": "{1}{W}",
+                    "cmc": 2.0,
+                    "type_line": "Creature — Test",
+                    "oracle_text": "Test creature for refresh integration.",
+                    "colors": ["W"],
+                    "color_identity": ["W"],
+                    "set": "tst",
+                    "set_name": "Test Set",
+                    "rarity": "common",
+                    "image_uris": {},
+                    "legalities": {"commander": "legal"},
+                    "prices": {},
+                },
+                {
+                    "id": "new-card-2",
+                    "oracle_id": "new-oracle-2",
+                    "name": "New Test Card Beta",
+                    "mana_cost": "{2}{U}",
+                    "cmc": 3.0,
+                    "type_line": "Instant",
+                    "oracle_text": "Draw two cards.",
+                    "colors": ["U"],
+                    "color_identity": ["U"],
+                    "set": "tst",
+                    "set_name": "Test Set",
+                    "rarity": "uncommon",
+                    "image_uris": {},
+                    "legalities": {"commander": "legal"},
+                    "prices": {},
+                },
+            ]
+
+            bulk_data_path = tmpdir_path / "test_bulk_data.json"
+            with open(bulk_data_path, "w") as f:
+                json.dump(test_cards, f)
+
+            # Create server WITHOUT pre-initialized database
+            # This avoids SQLite threading issues where a connection created
+            # in the main thread would be closed in the worker thread
+            with ScryfallServer(tmpdir_path) as server:
+                # Initially no database exists
+                initial_status = await server.call_tool("data_status", {})
+                assert initial_status["card_count"] == 0
+
+                # Mock the data manager to:
+                # 1. Return stale=True so refresh proceeds
+                # 2. Return our test file path for download
+                with patch.object(
+                    server._data_manager,
+                    "is_cache_stale",
+                    new=AsyncMock(return_value=True)
+                ), patch.object(
+                    server._data_manager,
+                    "download_bulk_data",
+                    new=AsyncMock(return_value=bulk_data_path)
+                ):
+                    # Trigger refresh
+                    result = await server.call_tool("refresh_data", {})
+                    assert result["status"] == "downloading"
+
+                    # Wait for refresh to complete (with timeout)
+                    for _ in range(50):  # 5 second timeout
+                        await asyncio.sleep(0.1)
+                        if server._refresh_status in ("completed", "idle") or \
+                           server._refresh_status.startswith("error:"):
+                            break
+
+                    # Check refresh completed successfully
+                    assert server._refresh_status == "completed", \
+                        f"Refresh failed with status: {server._refresh_status}"
+
+                # Verify database now contains the test cards
+                search_result = await server.call_tool("search_cards", {"query": "New Test Card"})
+                assert search_result["total_count"] == 2
+
+                # Verify we can get cards by name
+                card_alpha = await server.call_tool("get_card", {"name": "New Test Card Alpha"})
+                assert card_alpha["name"] == "New Test Card Alpha"
+                assert card_alpha["cmc"] == 2.0
+
+                card_beta = await server.call_tool("get_card", {"name": "New Test Card Beta"})
+                assert card_beta["name"] == "New Test Card Beta"
+                assert card_beta["oracle_text"] == "Draw two cards."
+
+    @pytest.mark.asyncio
+    async def test_refresh_integration_handles_download_error(self, sample_cards: list[dict[str, Any]]):
+        """Integration test: refresh handles download errors gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            with ScryfallServer(tmpdir_path) as server:
+                server._init_db(sample_cards)
+
+                # Mock the data manager to:
+                # 1. Return stale=True so refresh proceeds
+                # 2. Fail on download
+                with patch.object(
+                    server._data_manager,
+                    "is_cache_stale",
+                    new=AsyncMock(return_value=True)
+                ), patch.object(
+                    server._data_manager,
+                    "download_bulk_data",
+                    new=AsyncMock(side_effect=Exception("Network error: connection refused"))
+                ):
+                    # Trigger refresh
+                    result = await server.call_tool("refresh_data", {})
+                    assert result["status"] == "downloading"
+
+                    # Wait for refresh to complete (with timeout)
+                    for _ in range(50):  # 5 second timeout
+                        await asyncio.sleep(0.1)
+                        if server._refresh_status in ("completed", "idle") or \
+                           server._refresh_status.startswith("error:"):
+                            break
+
+                    # Check refresh reported error
+                    assert server._refresh_status.startswith("error:"), \
+                        f"Expected error status, got: {server._refresh_status}"
+                    assert "Network error" in server._refresh_status
+
+                # Verify original data is still intact
+                status = await server.call_tool("data_status", {})
+                assert status["card_count"] == len(sample_cards)
+
+                bolt = await server.call_tool("get_card", {"name": "Lightning Bolt"})
+                assert bolt["name"] == "Lightning Bolt"

@@ -5,6 +5,7 @@ Implements security measures for URL validation and path traversal prevention.
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 # Allowed domains for downloading bulk data
@@ -256,10 +259,16 @@ class DataManager:
 
         # Retry loop with exponential backoff
         last_error: Exception | None = None
+        attempts_made = 0
         for attempt in range(max_retries + 1):
+            attempts_made = attempt + 1
             if attempt > 0:
                 # Exponential backoff: 1s, 2s, 4s, etc.
                 delay = 2 ** (attempt - 1)
+                logger.warning(
+                    "Download attempt %d/%d failed: %s. Retrying in %ds...",
+                    attempt, max_retries + 1, last_error, delay
+                )
                 await asyncio.sleep(delay)
 
             try:
@@ -280,6 +289,8 @@ class DataManager:
                                 progress_callback(downloaded, total_size)
 
                     # Download successful - save metadata and return
+                    if attempt > 0:
+                        logger.info("Download succeeded on attempt %d/%d", attempt + 1, max_retries + 1)
                     metadata = {
                         "type": data_type,
                         "downloaded_at": datetime.now(timezone.utc).isoformat(),
@@ -306,7 +317,10 @@ class DataManager:
                 continue
 
         # All retries exhausted
-        raise last_error or RuntimeError("Download failed after all retries")
+        error_msg = f"Download failed after {attempts_made} attempts"
+        if last_error:
+            raise type(last_error)(f"{error_msg}: {last_error}") from last_error
+        raise RuntimeError(error_msg)
 
     def _load_metadata(self) -> dict[str, Any] | None:
         """Load metadata from file."""

@@ -62,6 +62,41 @@ Last updated: 2026-01-12
 
 ---
 
+### Download retry logging ✅
+
+**Status**: Resolved (2026-01-12)
+**Location**: `data_manager.py:260-323`
+**Issue**: Download failures didn't indicate how many retries were attempted.
+**Resolution**: Added logging for each retry attempt with delay info, success message on recovery, and error message now includes attempt count (e.g., "Download failed after 4 attempts: connection refused").
+
+---
+
+### SQLite threading bug in refresh ✅
+
+**Status**: Resolved (2026-01-12)
+**Location**: `server.py:492-514, 436-490`
+**Issue**: SQLite connection created in main thread was being closed/accessed in worker thread during refresh, causing "SQLite objects created in a thread can only be used in that same thread" error.
+**Resolution**:
+1. Close existing store connection in main thread (inside `_do_refresh`) BEFORE calling `asyncio.to_thread()`
+2. Create a local CardStore connection in worker thread instead of using `_get_store()` which would set `self._store`
+3. Close worker thread's connection when done
+4. Main thread queries will create fresh connection via `_get_store()` after refresh
+
+**Discovery**: Found by new integration test `test_refresh_integration_full_flow`.
+
+---
+
+### Refresh integration test coverage ✅
+
+**Status**: Resolved (2026-01-12)
+**Location**: `tests/test_server.py:553-695`
+**Issue**: No integration tests for full refresh flow.
+**Resolution**: Added two integration tests:
+1. `test_refresh_integration_full_flow` - Tests complete refresh cycle: download mock data, import, verify database updated
+2. `test_refresh_integration_handles_download_error` - Tests error handling preserves original data
+
+---
+
 ## Edge Cases (Won't Fix)
 
 These are known limitations that are acceptable given the use case:

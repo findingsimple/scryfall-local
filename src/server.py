@@ -454,34 +454,38 @@ class ScryfallServer:
                 "Install it with: pip install ijson"
             ) from e
 
-        # Close existing store connection before reimporting
-        if self._store is not None:
-            self._store.close()
-            self._store = None
+        # Note: Store connection closing and database deletion is handled by
+        # _do_refresh() in the main thread BEFORE calling this method.
+        # This is necessary because SQLite connections can only be used in the
+        # thread where they were created.
 
-        # Remove old database
-        if self.db_path.exists():
-            self.db_path.unlink()
+        # Create a LOCAL store connection for this thread - do NOT use _get_store()
+        # which would set self._store and cause threading issues when the main
+        # thread later tries to use it.
+        from src.card_store import CardStore
+        store = CardStore(self.db_path)
 
-        # Load JSON using streaming parser to reduce memory usage
-        store = self._get_store()
         batch_size = 1000
         batch: list[dict[str, Any]] = []
         card_count = 0
 
-        with open(file_path, "rb") as f:
-            # ijson.items streams through the JSON array one item at a time
-            for card in ijson.items(f, "item"):
-                batch.append(card)
-                if len(batch) >= batch_size:
-                    store.insert_cards(batch)
-                    card_count += len(batch)
-                    batch = []
+        try:
+            with open(file_path, "rb") as f:
+                # ijson.items streams through the JSON array one item at a time
+                for card in ijson.items(f, "item"):
+                    batch.append(card)
+                    if len(batch) >= batch_size:
+                        store.insert_cards(batch)
+                        card_count += len(batch)
+                        batch = []
 
-        # Insert remaining cards
-        if batch:
-            store.insert_cards(batch)
-            card_count += len(batch)
+            # Insert remaining cards
+            if batch:
+                store.insert_cards(batch)
+                card_count += len(batch)
+        finally:
+            # Close the worker thread's connection
+            store.close()
 
         return card_count
 
@@ -497,6 +501,17 @@ class ScryfallServer:
 
             # Acquire lock to prevent queries during database replacement
             async with self._refresh_lock:
+                # Close existing store connection in THIS thread (main/async thread)
+                # before running import in worker thread. SQLite connections can only
+                # be used in the thread where they were created.
+                if self._store is not None:
+                    self._store.close()
+                    self._store = None
+
+                # Remove old database
+                if self.db_path.exists():
+                    self.db_path.unlink()
+
                 # Run blocking I/O in thread pool to avoid blocking event loop
                 card_count = await asyncio.to_thread(
                     self._import_cards_blocking, file_path
