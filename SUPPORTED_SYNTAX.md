@@ -382,6 +382,29 @@ layout:adventure t:creature
 layout:transform OR layout:modal_dfc
 ```
 
+### Produces Token
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `pt:name` | Cards that create this token | `pt:zombie` |
+| `pt:"token name"` | Quoted token name | `pt:"Goblin Token"` |
+| `produces_token:name` | Alias for pt: | `produces_token:soldier` |
+| `-pt:name` | Cards that don't create token | `-pt:zombie` |
+
+**Examples:**
+```
+# Find cards that create Zombie tokens
+pt:zombie
+
+# Find cards that create Goblin tokens (creatures)
+pt:goblin t:creature
+
+# Find cards that create tokens but not Zombie tokens
+-pt:zombie kw:token
+```
+
+**Note:** This filter searches the `produces_tokens` field, which is extracted from Scryfall's `all_parts` data. Only entries with `component: "token"` are included; meld parts, combo pieces, and other related cards are not counted.
+
 ## Planned Features
 
 Features that could be implemented to achieve fuller Scryfall parity:
@@ -448,9 +471,9 @@ Features that could be implemented to achieve fuller Scryfall parity:
   - Syntax: `new:art`, `new:flavor`, `new:frame`, `new:artist`
   - Complex: requires comparing against other printings
 
-- [ ] **pt: filter** - Combined power/toughness
-  - Syntax: `pt:3/3` (exact), `powtou>=6` (combined total)
-  - Requires parsing P/T format or calculating sum
+- [ ] **powtou: filter** - Combined power/toughness total
+  - Syntax: `powtou>=6` (combined total >= 6)
+  - Requires calculating sum of power and toughness
 
 - [ ] **devotion: filter** - Mana symbol count in cost
   - Syntax: `devotion:R>=3` (3+ red symbols in cost)

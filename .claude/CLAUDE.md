@@ -82,6 +82,7 @@ Supported Scryfall syntax:
 - **Set**: `set:neo`, `e:m19`
 - **Rarity**: `r:mythic`, `r:rare`
 - **Layout**: `layout:transform`, `layout:adventure`, `layout:modal_dfc`
+- **Produces Token**: `pt:zombie`, `produces_token:"Goblin Token"`
 - **Boolean**: implicit AND, `OR`, `-` (negation)
 
 See `SUPPORTED_SYNTAX.md` for full documentation.
@@ -114,7 +115,7 @@ When a field is used for filtering or should appear in search results, add it as
 - Fields visible in search results
 - Cleaner filter code
 
-Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`, `layout`, `produced_mana`, `watermark`.
+Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`, `layout`, `produced_mana`, `watermark`, `produces_tokens`.
 
 The `raw_data` column stores the complete Scryfall JSON for any fields not yet promoted to columns.
 

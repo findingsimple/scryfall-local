@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 SYNTAX_SUMMARY = (
     "Supports: name, colors (c:blue), mana value (cmc:3), mana cost (m:{R}{R}), type (t:creature), "
     "oracle text (o:flying), set (set:neo), rarity (r:mythic), format (f:modern), "
-    "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023). "
-    "Boolean operators: implicit AND, OR, - (negation), (parentheses)."
+    "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023), "
+    "produces token (pt:zombie). Boolean operators: implicit AND, OR, - (negation), (parentheses)."
 )
 
 # Detailed list for error messages
@@ -43,6 +43,7 @@ SUPPORTED_SYNTAX = [
     "flavor text: ft:\"flavor text\" (search flavor text)",
     "collector number: cn:123, cn:1a (find specific printings)",
     "price: usd<1, usd>=10, eur<5",
+    "produces token: pt:zombie, produces_token:\"Goblin Token\" (find token creators)",
     "boolean: implicit AND, OR, - (negation), parentheses",
 ]
 
@@ -222,6 +223,9 @@ TOKEN_PATTERNS = [
     (r'(?:wm|watermark):([a-zA-Z]+)', 'WATERMARK'),
     # Layout filter (e.g., layout:transform, layout:modal_dfc, layout:adventure)
     (r'layout:([a-zA-Z_]+)', 'LAYOUT'),
+    # Produces token filter (e.g., pt:zombie, produces_token:"Goblin Token")
+    (r'(?:pt|produces_token):"([^"]+)"', 'PRODUCES_TOKEN_QUOTED'),
+    (r'(?:pt|produces_token):([a-zA-Z]+)', 'PRODUCES_TOKEN'),
     (r'(?:kw|keyword|keywords):"([^"]+)"', 'KEYWORD_QUOTED'),
     (r'(?:kw|keyword|keywords):([a-zA-Z]+)', 'KEYWORD'),
     (r'(?:pow|power)(>=|<=|>|<|=|!=|:)(\d+|\*)', 'POWER'),
@@ -344,10 +348,10 @@ class QueryParser:
                         operator = match.group(1)
                         mana_str = match.group(2)
                         tokens.append((token_type, (operator, mana_str)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED'):
+                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED', 'PRODUCES_TOKEN_QUOTED'):
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
                     elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
-                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT'):
+                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT', 'PRODUCES_TOKEN'):
                         tokens.append((token_type, match.group(1)))
                     elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
                         tokens.append((token_type, match.group(1)))
@@ -451,7 +455,7 @@ class QueryParser:
             if filter_key and filter_value is not None:
                 # Handle multiple values for same filter type (e.g., keyword:flying keyword:trample)
                 # These filter types can have multiple values that should be ANDed together
-                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not'}
+                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not', 'produces_token', 'produces_token_not'}
 
                 if filter_key in multi_value_filters:
                     if filter_key not in filters:
@@ -500,6 +504,7 @@ class QueryParser:
             'PRODUCES': 'produces',
             'WATERMARK': 'watermark',
             'LAYOUT': 'layout',
+            'PRODUCES_TOKEN': 'produces_token',
             'KEYWORD': 'keyword',
             'POWER': 'power',
             'TOUGHNESS': 'toughness',
@@ -609,6 +614,10 @@ class QueryParser:
         if token_type == 'LAYOUT':
             # Layout type (e.g., transform, modal_dfc, adventure)
             return value.lower()
+
+        if token_type == 'PRODUCES_TOKEN':
+            # Token name (e.g., zombie, "Goblin Token")
+            return value
 
         return None
 

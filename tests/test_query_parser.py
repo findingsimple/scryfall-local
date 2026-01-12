@@ -1187,6 +1187,54 @@ class TestQueryParserComplexQueries:
         assert result.filters["rarity"] == "mythic"
 
 
+class TestQueryParserProducesToken:
+    """Test produces_token/pt filter parsing."""
+
+    def test_parse_pt_simple(self):
+        """pt:zombie should parse produces_token filter."""
+        parser = QueryParser()
+        result = parser.parse("pt:zombie")
+
+        assert result.filters["produces_token"] == ["zombie"]
+
+    def test_parse_pt_quoted(self):
+        """pt:"Goblin Token" should parse produces_token filter."""
+        parser = QueryParser()
+        result = parser.parse('pt:"Goblin Token"')
+
+        assert result.filters["produces_token"] == ["Goblin Token"]
+
+    def test_parse_produces_token_full(self):
+        """produces_token:soldier should work as alternative."""
+        parser = QueryParser()
+        result = parser.parse("produces_token:soldier")
+
+        assert result.filters["produces_token"] == ["soldier"]
+
+    def test_parse_pt_negated(self):
+        """-pt:zombie should create produces_token_not filter."""
+        parser = QueryParser()
+        result = parser.parse("-pt:zombie")
+
+        assert result.filters["produces_token_not"] == ["zombie"]
+
+    def test_parse_pt_combined(self):
+        """pt:zombie t:creature should work with other filters."""
+        parser = QueryParser()
+        result = parser.parse("pt:zombie t:creature")
+
+        assert result.filters["produces_token"] == ["zombie"]
+        assert result.filters["type"] == ["creature"]
+
+    def test_parse_multiple_pt(self):
+        """Multiple pt filters should accumulate."""
+        parser = QueryParser()
+        result = parser.parse("pt:zombie pt:goblin")
+
+        assert "zombie" in result.filters["produces_token"]
+        assert "goblin" in result.filters["produces_token"]
+
+
 class TestParsedQueryObject:
     """Test ParsedQuery object properties."""
 

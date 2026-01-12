@@ -635,3 +635,164 @@ def double_faced_cards() -> list[dict[str, Any]]:
             "prices": {"usd": "15.00"},
         },
     ]
+
+
+@pytest.fixture
+def token_creating_cards() -> list[dict[str, Any]]:
+    """Cards that create tokens (with all_parts containing token references).
+
+    These cards have all_parts arrays that reference the tokens they create.
+    """
+    return [
+        # Creates a single type of token (Zombie)
+        {
+            "id": "token-test-gravecrawler",
+            "oracle_id": "token-oracle-gc",
+            "name": "Grave Titan",
+            "mana_cost": "{4}{B}{B}",
+            "cmc": 6.0,
+            "type_line": "Creature — Giant",
+            "oracle_text": "Deathtouch\nWhenever Grave Titan enters the battlefield or attacks, create two 2/2 black Zombie creature tokens.",
+            "keywords": ["Deathtouch"],
+            "power": "6",
+            "toughness": "6",
+            "colors": ["B"],
+            "color_identity": ["B"],
+            "set": "m11",
+            "set_name": "Magic 2011",
+            "rarity": "mythic",
+            "all_parts": [
+                {
+                    "object": "related_card",
+                    "id": "token-zombie-1",
+                    "component": "token",
+                    "name": "Zombie",
+                    "type_line": "Token Creature — Zombie",
+                    "uri": "https://api.scryfall.com/cards/token-zombie-1"
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "10.00"},
+        },
+        # Creates multiple types of tokens (Goblin and Soldier)
+        {
+            "id": "token-test-multi",
+            "oracle_id": "token-oracle-multi",
+            "name": "Assemble the Legion",
+            "mana_cost": "{3}{R}{W}",
+            "cmc": 5.0,
+            "type_line": "Enchantment",
+            "oracle_text": "At the beginning of your upkeep, put a muster counter on Assemble the Legion. Then create a 1/1 red and white Soldier creature token with haste for each muster counter on Assemble the Legion.",
+            "keywords": [],
+            "colors": ["R", "W"],
+            "color_identity": ["R", "W"],
+            "set": "gtc",
+            "set_name": "Gatecrash",
+            "rarity": "rare",
+            "all_parts": [
+                {
+                    "object": "related_card",
+                    "id": "token-soldier-1",
+                    "component": "token",
+                    "name": "Soldier",
+                    "type_line": "Token Creature — Soldier",
+                    "uri": "https://api.scryfall.com/cards/token-soldier-1"
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "2.00"},
+        },
+        # Card with both token and combo_piece components
+        {
+            "id": "token-test-siege",
+            "oracle_id": "token-oracle-siege",
+            "name": "Siege-Gang Commander",
+            "mana_cost": "{3}{R}{R}",
+            "cmc": 5.0,
+            "type_line": "Creature — Goblin",
+            "oracle_text": "When Siege-Gang Commander enters the battlefield, create three 1/1 red Goblin creature tokens.\n{1}{R}, Sacrifice a Goblin: Siege-Gang Commander deals 2 damage to any target.",
+            "keywords": [],
+            "power": "2",
+            "toughness": "2",
+            "colors": ["R"],
+            "color_identity": ["R"],
+            "set": "dom",
+            "set_name": "Dominaria",
+            "rarity": "rare",
+            "all_parts": [
+                {
+                    "object": "related_card",
+                    "id": "token-goblin-1",
+                    "component": "token",
+                    "name": "Goblin",
+                    "type_line": "Token Creature — Goblin",
+                    "uri": "https://api.scryfall.com/cards/token-goblin-1"
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "1.00"},
+        },
+        # Card with non-token all_parts (combo_piece) - should NOT populate produces_tokens
+        {
+            "id": "token-test-combo",
+            "oracle_id": "token-oracle-combo",
+            "name": "Meld Test Card",
+            "mana_cost": "{2}{W}",
+            "cmc": 3.0,
+            "type_line": "Creature — Angel",
+            "oracle_text": "At the beginning of your end step, if you control Meld Partner, meld them.",
+            "keywords": [],
+            "power": "3",
+            "toughness": "2",
+            "colors": ["W"],
+            "color_identity": ["W"],
+            "set": "emn",
+            "set_name": "Eldritch Moon",
+            "rarity": "rare",
+            "all_parts": [
+                {
+                    "object": "related_card",
+                    "id": "meld-partner-1",
+                    "component": "meld_part",
+                    "name": "Meld Partner",
+                    "type_line": "Creature — Angel",
+                    "uri": "https://api.scryfall.com/cards/meld-partner-1"
+                },
+                {
+                    "object": "related_card",
+                    "id": "meld-result-1",
+                    "component": "meld_result",
+                    "name": "Meld Result",
+                    "type_line": "Creature — Eldrazi Angel",
+                    "uri": "https://api.scryfall.com/cards/meld-result-1"
+                }
+            ],
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "5.00"},
+        },
+        # Card without all_parts (no tokens)
+        {
+            "id": "token-test-none",
+            "oracle_id": "token-oracle-none",
+            "name": "No Token Creator",
+            "mana_cost": "{1}{G}",
+            "cmc": 2.0,
+            "type_line": "Creature — Elf",
+            "oracle_text": "{T}: Add {G}.",
+            "keywords": [],
+            "power": "1",
+            "toughness": "1",
+            "colors": ["G"],
+            "color_identity": ["G"],
+            "set": "m21",
+            "set_name": "Core Set 2021",
+            "rarity": "common",
+            "image_uris": {},
+            "legalities": {"modern": "legal", "legacy": "legal", "commander": "legal"},
+            "prices": {"usd": "0.25"},
+        },
+    ]

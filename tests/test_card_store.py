@@ -2275,3 +2275,175 @@ class TestLayoutFilter:
             assert len(results) == 2
 
             store.close()
+
+
+class TestProducesTokensFilter:
+    """Tests for produces_tokens column and filtering."""
+
+    def test_token_extracted_from_all_parts(self, token_creating_cards: list[dict[str, Any]]):
+        """Token names should be extracted from all_parts with component='token'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            # Check Grave Titan has Zombie token
+            card = store.get_card_by_name("Grave Titan")
+            assert card is not None
+            assert card.get("produces_tokens") == ["Zombie"]
+
+            # Check Siege-Gang Commander has Goblin token
+            card = store.get_card_by_name("Siege-Gang Commander")
+            assert card is not None
+            assert card.get("produces_tokens") == ["Goblin"]
+
+            store.close()
+
+    def test_card_without_tokens_has_none(self, token_creating_cards: list[dict[str, Any]]):
+        """Cards without token all_parts should have None produces_tokens."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            # No Token Creator has no all_parts
+            card = store.get_card_by_name("No Token Creator")
+            assert card is not None
+            assert card.get("produces_tokens") is None
+
+            store.close()
+
+    def test_meld_parts_not_counted_as_tokens(self, token_creating_cards: list[dict[str, Any]]):
+        """Meld parts (component='meld_part') should not be included in produces_tokens."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            # Meld Test Card has meld_part and meld_result, but no token
+            card = store.get_card_by_name("Meld Test Card")
+            assert card is not None
+            assert card.get("produces_tokens") is None
+
+            store.close()
+
+    def test_filter_by_token_name(self, token_creating_cards: list[dict[str, Any]]):
+        """pt:zombie should find cards that create Zombie tokens."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            parsed = parser.parse("pt:zombie")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Grave Titan"
+
+            store.close()
+
+    def test_filter_by_token_name_case_insensitive(self, token_creating_cards: list[dict[str, Any]]):
+        """Token filter should be case insensitive."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Lowercase "goblin" should match "Goblin"
+            parsed = parser.parse("pt:goblin")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Siege-Gang Commander"
+
+            store.close()
+
+    def test_filter_by_token_quoted(self, token_creating_cards: list[dict[str, Any]]):
+        """pt:"Soldier" should work with quoted token names."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            parsed = parser.parse('pt:"Soldier"')
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Assemble the Legion"
+
+            store.close()
+
+    def test_filter_token_not(self, token_creating_cards: list[dict[str, Any]]):
+        """-pt:zombie should exclude cards that create Zombie tokens."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            parsed = parser.parse("-pt:zombie")
+            results = store.execute_query(parsed)
+
+            names = [r["name"] for r in results]
+            assert "Grave Titan" not in names
+            # All other cards should be included
+            assert len(results) == 4
+
+            store.close()
+
+    def test_filter_token_combined_with_other_filters(self, token_creating_cards: list[dict[str, Any]]):
+        """Token filter should work with other filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            # Token creators that are creatures
+            parsed = parser.parse("pt:goblin t:creature")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Siege-Gang Commander"
+
+            store.close()
+
+    def test_produces_token_syntax_variant(self, token_creating_cards: list[dict[str, Any]]):
+        """produces_token: syntax should work as alternative to pt:."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            store.insert_cards(token_creating_cards)
+
+            from src.query_parser import QueryParser
+            parser = QueryParser()
+
+            parsed = parser.parse("produces_token:zombie")
+            results = store.execute_query(parsed)
+
+            assert len(results) == 1
+            assert results[0]["name"] == "Grave Titan"
+
+            store.close()

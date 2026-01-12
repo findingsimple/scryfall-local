@@ -181,6 +181,7 @@ Each card returned includes these fields:
 | `flavor_text` | string | Flavor text |
 | `collector_number` | string | Collector number |
 | `layout` | string | Card layout (normal, transform, modal_dfc, split, adventure, etc.) |
+| `produces_tokens` | array | Names of tokens this card creates |
 | `image_uris` | object | Image URLs (small, normal, large, etc.) |
 | `legalities` | object | Format legality map |
 | `prices` | object | Price data (usd, eur, tix) |
@@ -206,6 +207,7 @@ See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 - Produces Mana: `produces:g`, `produces:wubrg`
 - Watermark: `wm:phyrexian`, `watermark:selesnya`
 - Layout: `layout:transform`, `layout:adventure`, `layout:modal_dfc`
+- Produces Token: `pt:zombie`, `produces_token:"Goblin Token"`
 - Power: `pow:3`, `pow>=4`, `power<2`
 - Toughness: `tou:4`, `tou>=5`, `toughness<3`
 - Loyalty: `loy:3`, `loy>=4`, `loyalty<5`

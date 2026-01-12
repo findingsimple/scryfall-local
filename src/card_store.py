@@ -223,7 +223,8 @@ class CardStore:
             # Note: Column names are from a fixed allowlist, not user input
             _MIGRATION_COLUMNS = frozenset({
                 "keywords", "artist", "released_at", "loyalty",
-                "flavor_text", "collector_number", "watermark", "produced_mana", "layout"
+                "flavor_text", "collector_number", "watermark", "produced_mana", "layout",
+                "produces_tokens"
             })
             migrations = [
                 ("keywords", "$.keywords"),
@@ -235,6 +236,7 @@ class CardStore:
                 ("watermark", "$.watermark"),
                 ("produced_mana", "$.produced_mana"),
                 ("layout", "$.layout"),
+                ("produces_tokens", None),  # Complex extraction, populated during insert
             ]
 
             for col_name, json_path in migrations:
@@ -243,11 +245,13 @@ class CardStore:
                     continue
                 if col_name not in columns:
                     cursor.execute(f"ALTER TABLE cards ADD COLUMN {col_name} TEXT")
-                    cursor.execute(f"""
-                        UPDATE cards
-                        SET {col_name} = json_extract(raw_data, '{json_path}')
-                        WHERE {col_name} IS NULL
-                    """)
+                    # Only populate from JSON if json_path is provided
+                    if json_path is not None:
+                        cursor.execute(f"""
+                            UPDATE cards
+                            SET {col_name} = json_extract(raw_data, '{json_path}')
+                            WHERE {col_name} IS NULL
+                        """)
             self._conn.commit()
 
         # Main cards table
@@ -276,6 +280,7 @@ class CardStore:
                 watermark TEXT,  -- Guild/faction watermark (e.g., "selesnya", "phyrexian")
                 produced_mana TEXT,  -- JSON array of mana colors this card produces
                 layout TEXT,  -- Card layout (normal, transform, modal_dfc, split, adventure, etc.)
+                produces_tokens TEXT,  -- JSON array of token names this card creates
                 image_uris TEXT,  -- JSON object
                 legalities TEXT,  -- JSON object
                 prices TEXT,  -- JSON object
@@ -372,8 +377,8 @@ class CardStore:
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, artist, released_at, loyalty, flavor_text, collector_number,
-            watermark, produced_mana, layout, image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            watermark, produced_mana, layout, produces_tokens, image_uris, legalities, prices, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             oracle_id = excluded.oracle_id,
             name = excluded.name,
@@ -397,6 +402,7 @@ class CardStore:
             watermark = excluded.watermark,
             produced_mana = excluded.produced_mana,
             layout = excluded.layout,
+            produces_tokens = excluded.produces_tokens,
             image_uris = excluded.image_uris,
             legalities = excluded.legalities,
             prices = excluded.prices,
@@ -441,6 +447,11 @@ class CardStore:
         elif colors is None:
             colors = []
 
+        # Extract token names from all_parts (for token-creating cards)
+        all_parts = card.get("all_parts", [])
+        token_names = [part["name"] for part in all_parts if part.get("component") == "token"]
+        produces_tokens = json.dumps(token_names, cls=DecimalEncoder) if token_names else None
+
         return (
             card.get("id"),
             card.get("oracle_id"),
@@ -465,6 +476,7 @@ class CardStore:
             card.get("watermark"),
             json.dumps(card.get("produced_mana", []), cls=DecimalEncoder),
             layout,  # Already extracted above for DFC handling
+            produces_tokens,  # JSON array of token names from all_parts
             json.dumps(card.get("image_uris", {}), cls=DecimalEncoder),
             json.dumps(card.get("legalities", {}), cls=DecimalEncoder),
             json.dumps(card.get("prices", {}), cls=DecimalEncoder),
@@ -508,7 +520,7 @@ class CardStore:
         card = dict(row)
         # Parse JSON fields
         for field in ["colors", "color_identity", "keywords", "produced_mana",
-                      "image_uris", "legalities", "prices"]:
+                      "produces_tokens", "image_uris", "legalities", "prices"]:
             if card.get(field):
                 try:
                     card[field] = json.loads(card[field])
@@ -1303,6 +1315,29 @@ class CardStore:
             layout_not_value = filters["layout_not"]
             conditions.append("(layout IS NULL OR LOWER(layout) != ?)")
             params.append(layout_not_value.lower())
+
+        # Produces token filter (e.g., produces_token:zombie, pt:"Goblin Token")
+        # Searches the produces_tokens JSON array for matching token names
+        if "produces_token" in filters:
+            token_values = filters["produces_token"]
+            if isinstance(token_values, list):
+                for token_name in token_values:
+                    conditions.append("LOWER(produces_tokens) LIKE ?")
+                    params.append(f'%"{token_name.lower()}"%')
+            else:
+                conditions.append("LOWER(produces_tokens) LIKE ?")
+                params.append(f'%"{token_values.lower()}"%')
+
+        # Produces token NOT filter
+        if "produces_token_not" in filters:
+            token_not_values = filters["produces_token_not"]
+            if isinstance(token_not_values, list):
+                for token_name in token_not_values:
+                    conditions.append("(produces_tokens IS NULL OR LOWER(produces_tokens) NOT LIKE ?)")
+                    params.append(f'%"{token_name.lower()}"%')
+            else:
+                conditions.append("(produces_tokens IS NULL OR LOWER(produces_tokens) NOT LIKE ?)")
+                params.append(f'%"{token_not_values.lower()}"%')
 
         # Block filter (e.g., b:innistrad)
         if "block" in filters:
