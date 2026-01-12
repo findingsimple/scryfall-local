@@ -240,11 +240,17 @@ TOKEN_PATTERNS = [
     (r'\(', 'LPAREN'),
     (r'\)', 'RPAREN'),
     # Name patterns - strict exact match with ! prefix comes first
+    # Support both double quotes and single quotes for flexibility
     (r'!"([^"]+)"', 'STRICT_NAME'),
+    (r"!'([^']+)'", 'STRICT_NAME'),  # Single-quote variant
     (r'"([^"]+)"', 'EXACT_NAME'),
-    # Partial name allows letters, numbers, underscores, hyphens, and apostrophes
-    # This supports card names like "Urza's", "Al-abara's", "Ach! Hans, Run!"
-    (r"([a-zA-Z][a-zA-Z0-9_'-]*)", 'PARTIAL_NAME'),
+    (r"'([^']+)'", 'EXACT_NAME'),  # Single-quote variant for names with special chars
+    # Partial name allows:
+    # - ASCII and accented Latin letters (a-zA-Z plus \u00C0-\u024F for é, û, ö, etc.)
+    # - Numbers, underscores, hyphens, apostrophes
+    # - Common punctuation in card names: comma, period, ampersand
+    # This supports names like "Urza's", "Séance", "Lim-Dûl", "Dr.", "R&D", "Hans,"
+    (r"([a-zA-Z\u00C0-\u024F][a-zA-Z0-9\u00C0-\u024F_',.&-]*)", 'PARTIAL_NAME'),
 ]
 
 

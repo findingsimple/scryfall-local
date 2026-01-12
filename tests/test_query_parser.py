@@ -51,6 +51,77 @@ class TestQueryParserBasicName:
         assert result.filters["name_partial"] == "Urza's"
         assert result.filters["type"] == ["land"]
 
+    def test_parse_partial_name_with_accented_characters(self):
+        """Partial name with accented characters (e.g., Séance, Lim-Dûl)."""
+        parser = QueryParser()
+
+        result = parser.parse("Séance")
+        assert result.filters["name_partial"] == "Séance"
+
+        result = parser.parse("Lim-Dûl")
+        assert result.filters["name_partial"] == "Lim-Dûl"
+
+    def test_parse_partial_name_with_period(self):
+        """Partial name with period (e.g., Dr., B.F.M.)."""
+        parser = QueryParser()
+        result = parser.parse("Dr.")
+
+        assert result.filters["name_partial"] == "Dr."
+
+    def test_parse_partial_name_with_ampersand(self):
+        """Partial name with ampersand (e.g., R&D)."""
+        parser = QueryParser()
+        result = parser.parse("R&D")
+
+        assert result.filters["name_partial"] == "R&D"
+
+    def test_parse_partial_name_with_comma(self):
+        """Partial name with comma."""
+        parser = QueryParser()
+        result = parser.parse("Hans,")
+
+        assert result.filters["name_partial"] == "Hans,"
+
+    def test_parse_partial_name_accented_with_filter(self):
+        """Partial name with accented characters combined with filter."""
+        parser = QueryParser()
+        result = parser.parse("Séance t:enchantment")
+
+        assert result.filters["name_partial"] == "Séance"
+        assert result.filters["type"] == ["enchantment"]
+
+    def test_parse_single_quoted_name(self):
+        """Single-quoted name for special characters like ! and ?."""
+        parser = QueryParser()
+
+        result = parser.parse("'Ach! Hans, Run!'")
+        assert result.filters["name_exact"] == "Ach! Hans, Run!"
+
+        result = parser.parse("'Question Elemental?'")
+        assert result.filters["name_exact"] == "Question Elemental?"
+
+    def test_parse_single_quoted_with_parentheses(self):
+        """Single-quoted name with parentheses."""
+        parser = QueryParser()
+        result = parser.parse("'B.F.M. (Big Furry Monster)'")
+
+        assert result.filters["name_exact"] == "B.F.M. (Big Furry Monster)"
+
+    def test_parse_single_quoted_with_filter(self):
+        """Single-quoted name combined with filter."""
+        parser = QueryParser()
+        result = parser.parse("'Ach! Hans, Run!' t:creature")
+
+        assert result.filters["name_exact"] == "Ach! Hans, Run!"
+        assert result.filters["type"] == ["creature"]
+
+    def test_parse_strict_single_quoted(self):
+        """Strict match with single quotes."""
+        parser = QueryParser()
+        result = parser.parse("!'Question Elemental?'")
+
+        assert result.filters["name_strict"] == "Question Elemental?"
+
 
 class TestQueryParserColors:
     """Test color-based queries."""

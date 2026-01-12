@@ -73,7 +73,8 @@ pytest tests/test_query_parser.py   # Single file
 ## Query Syntax
 
 Supported Scryfall syntax:
-- **Name**: `"Lightning Bolt"` (exact), `bolt` (partial)
+- **Name**: `"Lightning Bolt"` (exact), `'Ach! Hans, Run!'` (single quotes for `!?()`)
+- **Name**: `bolt` (partial), `Séance` (accented chars), `Urza's` (apostrophes)
 - **Colors**: `c:blue`, `c:urg`, `c>=rg`
 - **Mana Value**: `cmc:3`, `cmc>=5`, `cmc<2`
 - **Type**: `t:creature`, `t:"legendary creature"`

@@ -9,8 +9,25 @@ This document describes the query syntax supported by the Scryfall Local MCP ser
 | Syntax | Description | Example |
 |--------|-------------|---------|
 | `"card name"` | Exact name match (case-insensitive) | `"Lightning Bolt"` |
+| `'card name'` | Exact name match (single quotes) | `'Ach! Hans, Run!'` |
 | `!"card name"` | Strict exact match (case-sensitive) | `!"Lightning Bolt"` |
+| `!'card name'` | Strict exact match (single quotes) | `!'Question Elemental?'` |
 | `word` | Partial name match | `bolt` |
+
+**Quote Style Tips:**
+- Use double quotes `"..."` for names with apostrophes: `"Urza's Tower"`
+- Use single quotes `'...'` for names with `!`, `?`, or parentheses: `'Ach! Hans, Run!'`
+
+**Partial Name Special Characters:**
+Unquoted partial names support these characters:
+- Accented Latin letters: `Séance`, `Lim-Dûl`, `Márton`
+- Apostrophes: `Urza's`, `Al-abara's`
+- Periods: `Dr.`, `B.F.M.`
+- Ampersands: `R&D`
+- Commas: `Hans,`
+- Hyphens: `Lim-Dûl`, `Will-o'-the-Wisp`
+
+For `!`, `?`, `()`, or `:` in names, use quotes: `'Question Elemental?'`
 
 ### Colors
 
