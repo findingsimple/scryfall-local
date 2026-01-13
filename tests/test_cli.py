@@ -364,10 +364,10 @@ class TestStreamingImport:
 
             progress_calls = []
 
-            def progress_callback(imported: int, total: int | None):
+            def progress_callback(imported: int) -> None:
                 progress_calls.append(imported)
 
-            count = import_cards_streaming(json_file, store, progress_callback)
+            count = import_cards_streaming(json_file, store, progress_callback=progress_callback)
 
             assert count == 1500
             # Should have been called at least twice (after first batch and final)

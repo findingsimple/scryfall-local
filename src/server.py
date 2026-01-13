@@ -19,6 +19,7 @@ import mcp.server.stdio
 from src import __version__
 from src.card_store import CardStore
 from src.data_manager import DataManager
+from src.import_utils import import_cards_streaming
 from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
 
 # Server name constant - used in multiple places
@@ -445,15 +446,6 @@ class ScryfallServer:
         Raises:
             ImportError: If ijson is not installed (required for streaming JSON parsing)
         """
-        # Lazy import ijson - only needed for data refresh, not basic queries
-        try:
-            import ijson
-        except ImportError as e:
-            raise ImportError(
-                "ijson is required for importing card data. "
-                "Install it with: pip install ijson"
-            ) from e
-
         # Note: Store connection closing and database deletion is handled by
         # _do_refresh() in the main thread BEFORE calling this method.
         # This is necessary because SQLite connections can only be used in the
@@ -462,32 +454,13 @@ class ScryfallServer:
         # Create a LOCAL store connection for this thread - do NOT use _get_store()
         # which would set self._store and cause threading issues when the main
         # thread later tries to use it.
-        from src.card_store import CardStore
         store = CardStore(self.db_path)
 
-        batch_size = 1000
-        batch: list[dict[str, Any]] = []
-        card_count = 0
-
         try:
-            with open(file_path, "rb") as f:
-                # ijson.items streams through the JSON array one item at a time
-                for card in ijson.items(f, "item"):
-                    batch.append(card)
-                    if len(batch) >= batch_size:
-                        store.insert_cards(batch)
-                        card_count += len(batch)
-                        batch = []
-
-            # Insert remaining cards
-            if batch:
-                store.insert_cards(batch)
-                card_count += len(batch)
+            return import_cards_streaming(file_path, store)
         finally:
             # Close the worker thread's connection
             store.close()
-
-        return card_count
 
     async def _do_refresh(self) -> None:
         """Perform the actual download and import (runs in background)."""
