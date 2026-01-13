@@ -782,6 +782,285 @@ class CardStore:
         )
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
+    # -------------------------------------------------------------------------
+    # Filter Helper Methods
+    # -------------------------------------------------------------------------
+    # These methods reduce repetition in _build_conditions_for_filters by
+    # providing common patterns for building SQL conditions.
+
+    def _add_like_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+        negated: bool = False,
+    ) -> None:
+        """Add LIKE conditions for text search filters.
+
+        Handles both single values and lists, with case-insensitive matching.
+        For negated filters, adds NULL check to avoid matching NULL values.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name
+            conditions: List to append conditions to
+            params: List to append parameters to
+            negated: Whether this is a NOT filter
+        """
+        if key not in filters:
+            return
+
+        values = filters[key]
+        values = values if isinstance(values, list) else [values]
+
+        for val in values:
+            if negated:
+                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ?)")
+            else:
+                conditions.append(f"LOWER({column}) LIKE ?")
+            params.append(f"%{val.lower()}%")
+
+    def _add_json_array_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+        negated: bool = False,
+    ) -> None:
+        """Add LIKE conditions for JSON array filters (keywords, produces_tokens).
+
+        Searches for quoted values within JSON arrays, e.g., '"Flying"' in '["Flying", "Trample"]'.
+        Case-insensitive matching with NULL check for negated filters.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name
+            conditions: List to append conditions to
+            params: List to append parameters to
+            negated: Whether this is a NOT filter
+        """
+        if key not in filters:
+            return
+
+        values = filters[key]
+        values = values if isinstance(values, list) else [values]
+
+        for val in values:
+            if negated:
+                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ?)")
+            else:
+                conditions.append(f"LOWER({column}) LIKE ?")
+            params.append(f'%"{val.lower()}"%')
+
+    def _add_exact_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+        negated: bool = False,
+    ) -> None:
+        """Add exact match conditions (case-insensitive).
+
+        For negated filters, adds NULL check to avoid matching NULL values.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name
+            conditions: List to append conditions to
+            params: List to append parameters to
+            negated: Whether this is a NOT filter
+        """
+        if key not in filters:
+            return
+
+        value = filters[key]
+        if negated:
+            conditions.append(f"({column} IS NULL OR LOWER({column}) != ?)")
+        else:
+            conditions.append(f"LOWER({column}) = ?")
+        params.append(value.lower())
+
+    def _add_numeric_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column_expr: str,
+        conditions: list[str],
+        params: list[Any],
+        negated: bool = False,
+    ) -> None:
+        """Add numeric comparison conditions.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column_expr: SQL expression for the column (e.g., "cmc", "CAST(power AS INTEGER)")
+            conditions: List to append conditions to
+            params: List to append parameters to
+            negated: Whether this is a NOT filter (inverts operator)
+        """
+        if key not in filters:
+            return
+
+        filter_data = filters[key]
+        value = filter_data.get("value", 0)
+        operator = filter_data.get("operator", "=")
+
+        if negated:
+            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+        else:
+            sql_op = OPERATOR_MAP.get(operator, "=")
+
+        conditions.append(f"{column_expr} {sql_op} ?")
+        params.append(value)
+
+    def _add_stat_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+        negated: bool = False,
+    ) -> None:
+        """Add power/toughness filter conditions with special handling for '*'.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name (power or toughness)
+            conditions: List to append conditions to
+            params: List to append parameters to
+            negated: Whether this is a NOT filter
+        """
+        if key not in filters:
+            return
+
+        filter_data = filters[key]
+        value = filter_data.get("value")
+        operator = filter_data.get("operator", "=")
+
+        if value == "*":
+            # Special case: variable power/toughness
+            if negated:
+                conditions.append(f"{column} != '*'")
+            else:
+                conditions.append(f"{column} = '*'")
+        else:
+            if negated:
+                sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
+            else:
+                sql_op = OPERATOR_MAP.get(operator, "=")
+            conditions.append(f"CAST({column} AS INTEGER) {sql_op} ?")
+            params.append(value)
+
+    def _add_color_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+    ) -> None:
+        """Add color-based filter conditions with operator support.
+
+        Handles all color operators: =, :, >=, <=, >, <
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name (colors or color_identity)
+            conditions: List to append conditions to
+            params: List to append parameters to
+        """
+        if key not in filters:
+            return
+
+        color_filter = filters[key]
+        colors = color_filter.get("value", [])
+        operator = color_filter.get("operator", ":")
+
+        if not colors:
+            # Colorless
+            conditions.append(f"{column} = '[]'")
+            return
+
+        all_colors = {"W", "U", "B", "R", "G"}
+
+        if operator in (":", "=", ">="):
+            # Has at least these colors
+            for c in colors:
+                conditions.append(f"{column} LIKE ?")
+                params.append(f'%"{c}"%')
+
+        elif operator == "<=":
+            # Has at most these colors (subset)
+            disallowed = all_colors - set(colors)
+            for c in disallowed:
+                conditions.append(f"{column} NOT LIKE ?")
+                params.append(f'%"{c}"%')
+
+        elif operator == ">":
+            # Strict superset: has all specified plus at least one more
+            for c in colors:
+                conditions.append(f"{column} LIKE ?")
+                params.append(f'%"{c}"%')
+            other_colors = all_colors - set(colors)
+            if other_colors:
+                or_conditions = " OR ".join(f"{column} LIKE '%\"{c}\"%'" for c in other_colors)
+                conditions.append(f"({or_conditions})")
+
+        elif operator == "<":
+            # Strict subset: fewer colors than specified
+            disallowed = all_colors - set(colors)
+            for c in disallowed:
+                conditions.append(f"{column} NOT LIKE ?")
+                params.append(f'%"{c}"%')
+            if len(colors) > 1:
+                # At least one specified color must be missing
+                not_all = " OR ".join(f"{column} NOT LIKE '%\"{c}\"%'" for c in colors)
+                conditions.append(f"({not_all})")
+
+    def _add_color_not_filter(
+        self,
+        filters: dict[str, Any],
+        key: str,
+        column: str,
+        conditions: list[str],
+        params: list[Any],
+    ) -> None:
+        """Add negated color filter conditions.
+
+        Args:
+            filters: Filter dictionary
+            key: Key to look up in filters
+            column: SQL column name (colors or color_identity)
+            conditions: List to append conditions to
+            params: List to append parameters to
+        """
+        if key not in filters:
+            return
+
+        color_filter = filters[key]
+        colors = color_filter.get("value", [])
+
+        if not colors:
+            # -c:colorless means NOT colorless, i.e., has at least one color
+            conditions.append(f"{column} != '[]'")
+        else:
+            for c in colors:
+                conditions.append(f"{column} NOT LIKE ?")
+                params.append(f'%"{c}"%')
+
     def _build_conditions_for_filters(
         self, filters: dict[str, Any]
     ) -> tuple[list[str], list[Any]]:
@@ -803,166 +1082,21 @@ class CardStore:
         if "name_strict" in filters:
             conditions.append("name = ? COLLATE BINARY")
             params.append(filters["name_strict"])
-        if "name_partial" in filters:
-            name_partial_values = filters["name_partial"]
-            if isinstance(name_partial_values, list):
-                for name_val in name_partial_values:
-                    conditions.append("LOWER(name) LIKE ?")
-                    params.append(f"%{name_val.lower()}%")
-            else:
-                conditions.append("LOWER(name) LIKE ?")
-                params.append(f"%{name_partial_values.lower()}%")
-        if "name_partial_not" in filters:
-            name_partial_not_values = filters["name_partial_not"]
-            if isinstance(name_partial_not_values, list):
-                for name_val in name_partial_not_values:
-                    conditions.append("LOWER(name) NOT LIKE ?")
-                    params.append(f"%{name_val.lower()}%")
-            else:
-                conditions.append("LOWER(name) NOT LIKE ?")
-                params.append(f"%{name_partial_not_values.lower()}%")
-        if "name_contains" in filters:
-            # Support list of partial name matches (for backward compatibility)
-            name_values = filters["name_contains"]
-            if isinstance(name_values, list):
-                for name_val in name_values:
-                    conditions.append("LOWER(name) LIKE ?")
-                    params.append(f"%{name_val.lower()}%")
-            else:
-                conditions.append("LOWER(name) LIKE ?")
-                params.append(f"%{name_values.lower()}%")
 
-        # Color filter
-        if "colors" in filters:
-            color_filter = filters["colors"]
-            colors = color_filter.get("value", [])
-            operator = color_filter.get("operator", ":")
-            if not colors:
-                conditions.append("colors = '[]'")
-            elif operator in (":", "=", ">="):
-                # Has at least these colors
-                for c in colors:
-                    conditions.append("colors LIKE ?")
-                    params.append(f'%"{c}"%')
-            elif operator == "<=":
-                # Has at most these colors (subset)
-                all_colors = {"W", "U", "B", "R", "G"}
-                allowed_colors = set(colors)
-                disallowed_colors = all_colors - allowed_colors
-                if disallowed_colors:
-                    for c in disallowed_colors:
-                        conditions.append("colors NOT LIKE ?")
-                        params.append(f'%"{c}"%')
-            elif operator == ">":
-                # Has more colors than specified (superset, not equal)
-                # Must have all specified colors plus at least one more
-                for c in colors:
-                    conditions.append("colors LIKE ?")
-                    params.append(f'%"{c}"%')
-                all_colors = {"W", "U", "B", "R", "G"}
-                other_colors = all_colors - set(colors)
-                if other_colors:
-                    # Must have at least one color not in the specified set
-                    or_conditions = " OR ".join(f"colors LIKE '%\"{c}\"%'" for c in other_colors)
-                    conditions.append(f"({or_conditions})")
-            elif operator == "<":
-                # Has fewer colors than specified (strict subset)
-                # Must not have all the specified colors, and must not have any outside
-                all_colors = {"W", "U", "B", "R", "G"}
-                disallowed_colors = all_colors - set(colors)
-                # Can't have colors outside the specified set
-                for c in disallowed_colors:
-                    conditions.append("colors NOT LIKE ?")
-                    params.append(f'%"{c}"%')
-                # Must not have ALL of the specified colors (strict subset)
-                if len(colors) > 1:
-                    # At least one of the specified colors must be missing
-                    not_all = " OR ".join(f"colors NOT LIKE '%\"{c}\"%'" for c in colors)
-                    conditions.append(f"({not_all})")
+        # Partial name filters (LIKE matching)
+        self._add_like_filter(filters, "name_partial", "name", conditions, params)
+        self._add_like_filter(filters, "name_partial_not", "name", conditions, params, negated=True)
+        self._add_like_filter(filters, "name_contains", "name", conditions, params)
 
-        # Color NOT filter
-        if "colors_not" in filters:
-            color_not_filter = filters["colors_not"]
-            colors = color_not_filter.get("value", [])
-            if not colors:
-                # -c:colorless means NOT colorless, i.e., has at least one color
-                conditions.append("colors != '[]'")
-            else:
-                for c in colors:
-                    conditions.append("colors NOT LIKE ?")
-                    params.append(f'%"{c}"%')
-
-        # Color identity filter
-        if "color_identity" in filters:
-            identity_filter = filters["color_identity"]
-            colors = identity_filter.get("value", [])
-            operator = identity_filter.get("operator", ":")
-            if not colors:
-                conditions.append("color_identity = '[]'")
-            elif operator in (":", "=", ">="):
-                # Has at least these colors in identity
-                for c in colors:
-                    conditions.append("color_identity LIKE ?")
-                    params.append(f'%"{c}"%')
-            elif operator == "<=":
-                # Identity is subset of specified colors
-                all_colors = {"W", "U", "B", "R", "G"}
-                allowed_colors = set(colors)
-                disallowed_colors = all_colors - allowed_colors
-                if disallowed_colors:
-                    for c in disallowed_colors:
-                        conditions.append("color_identity NOT LIKE ?")
-                        params.append(f'%"{c}"%')
-            elif operator == ">":
-                # Identity is strict superset (has all specified plus more)
-                for c in colors:
-                    conditions.append("color_identity LIKE ?")
-                    params.append(f'%"{c}"%')
-                all_colors = {"W", "U", "B", "R", "G"}
-                other_colors = all_colors - set(colors)
-                if other_colors:
-                    or_conditions = " OR ".join(f"color_identity LIKE '%\"{c}\"%'" for c in other_colors)
-                    conditions.append(f"({or_conditions})")
-            elif operator == "<":
-                # Identity is strict subset (fewer colors than specified)
-                all_colors = {"W", "U", "B", "R", "G"}
-                disallowed_colors = all_colors - set(colors)
-                for c in disallowed_colors:
-                    conditions.append("color_identity NOT LIKE ?")
-                    params.append(f'%"{c}"%')
-                if len(colors) > 1:
-                    not_all = " OR ".join(f"color_identity NOT LIKE '%\"{c}\"%'" for c in colors)
-                    conditions.append(f"({not_all})")
-
-        # Color identity NOT filter
-        if "color_identity_not" in filters:
-            identity_not_filter = filters["color_identity_not"]
-            colors = identity_not_filter.get("value", [])
-            if not colors:
-                # -id:colorless means NOT colorless, i.e., has at least one color
-                conditions.append("color_identity != '[]'")
-            else:
-                for c in colors:
-                    conditions.append("color_identity NOT LIKE ?")
-                    params.append(f'%"{c}"%')
+        # Color filters
+        self._add_color_filter(filters, "colors", "colors", conditions, params)
+        self._add_color_not_filter(filters, "colors_not", "colors", conditions, params)
+        self._add_color_filter(filters, "color_identity", "color_identity", conditions, params)
+        self._add_color_not_filter(filters, "color_identity_not", "color_identity", conditions, params)
 
         # CMC filter
-        if "cmc" in filters:
-            cmc_filter = filters["cmc"]
-            value = cmc_filter.get("value", 0)
-            operator = cmc_filter.get("operator", "=")
-            sql_op = OPERATOR_MAP.get(operator, "=")
-            conditions.append(f"cmc {sql_op} ?")
-            params.append(value)
-
-        # CMC NOT filter (inverts the operator: -cmc>=5 means cmc<5)
-        if "cmc_not" in filters:
-            cmc_not_filter = filters["cmc_not"]
-            value = cmc_not_filter.get("value", 0)
-            operator = cmc_not_filter.get("operator", "=")
-            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-            conditions.append(f"cmc {sql_op} ?")
-            params.append(value)
+        self._add_numeric_filter(filters, "cmc", "cmc", conditions, params)
+        self._add_numeric_filter(filters, "cmc_not", "cmc", conditions, params, negated=True)
 
         # Mana cost filter (e.g., m:{R}{R}, mana:{2}{U}{U})
         if "mana" in filters:
@@ -970,15 +1104,12 @@ class CardStore:
             mana_value = mana_filter.get("value", "")
             operator = mana_filter.get("operator", ":")
             if operator == "=":
-                # Exact match
                 conditions.append("mana_cost = ?")
                 params.append(mana_value)
             else:
-                # Contains match (default for :)
                 conditions.append("mana_cost LIKE ?")
                 params.append(f"%{mana_value}%")
 
-        # Mana cost NOT filter
         if "mana_not" in filters:
             mana_not_filter = filters["mana_not"]
             mana_value = mana_not_filter.get("value", "")
@@ -990,91 +1121,25 @@ class CardStore:
                 conditions.append("(mana_cost IS NULL OR mana_cost NOT LIKE ?)")
                 params.append(f"%{mana_value}%")
 
-        # Type filter
-        if "type" in filters:
-            type_values = filters["type"]
-            if isinstance(type_values, list):
-                for type_val in type_values:
-                    conditions.append("LOWER(type_line) LIKE ?")
-                    params.append(f"%{type_val.lower()}%")
-            else:
-                conditions.append("LOWER(type_line) LIKE ?")
-                params.append(f"%{type_values.lower()}%")
+        # Type filters
+        self._add_like_filter(filters, "type", "type_line", conditions, params)
+        self._add_like_filter(filters, "type_not", "type_line", conditions, params, negated=True)
 
-        # Type NOT filter
-        if "type_not" in filters:
-            type_not_values = filters["type_not"]
-            if isinstance(type_not_values, list):
-                for type_val in type_not_values:
-                    conditions.append("(type_line IS NULL OR LOWER(type_line) NOT LIKE ?)")
-                    params.append(f"%{type_val.lower()}%")
-            else:
-                conditions.append("(type_line IS NULL OR LOWER(type_line) NOT LIKE ?)")
-                params.append(f"%{type_not_values.lower()}%")
+        # Oracle text filters
+        self._add_like_filter(filters, "oracle_text", "oracle_text", conditions, params)
+        self._add_like_filter(filters, "oracle_text_not", "oracle_text", conditions, params, negated=True)
 
-        # Oracle text filter
-        if "oracle_text" in filters:
-            oracle_values = filters["oracle_text"]
-            if isinstance(oracle_values, list):
-                for oracle_val in oracle_values:
-                    conditions.append("LOWER(oracle_text) LIKE ?")
-                    params.append(f"%{oracle_val.lower()}%")
-            else:
-                conditions.append("LOWER(oracle_text) LIKE ?")
-                params.append(f"%{oracle_values.lower()}%")
+        # Flavor text filters
+        self._add_like_filter(filters, "flavor_text", "flavor_text", conditions, params)
+        self._add_like_filter(filters, "flavor_text_not", "flavor_text", conditions, params, negated=True)
 
-        # Oracle text NOT filter
-        if "oracle_text_not" in filters:
-            oracle_not_values = filters["oracle_text_not"]
-            if isinstance(oracle_not_values, list):
-                for oracle_val in oracle_not_values:
-                    conditions.append("(oracle_text IS NULL OR LOWER(oracle_text) NOT LIKE ?)")
-                    params.append(f"%{oracle_val.lower()}%")
-            else:
-                conditions.append("(oracle_text IS NULL OR LOWER(oracle_text) NOT LIKE ?)")
-                params.append(f"%{oracle_not_values.lower()}%")
+        # Set filters
+        self._add_exact_filter(filters, "set", "set_code", conditions, params)
+        self._add_exact_filter(filters, "set_not", "set_code", conditions, params, negated=True)
 
-        # Flavor text filter
-        if "flavor_text" in filters:
-            flavor_values = filters["flavor_text"]
-            if isinstance(flavor_values, list):
-                for flavor_val in flavor_values:
-                    conditions.append("LOWER(flavor_text) LIKE ?")
-                    params.append(f"%{flavor_val.lower()}%")
-            else:
-                conditions.append("LOWER(flavor_text) LIKE ?")
-                params.append(f"%{flavor_values.lower()}%")
-
-        # Flavor text NOT filter
-        if "flavor_text_not" in filters:
-            flavor_not_values = filters["flavor_text_not"]
-            if isinstance(flavor_not_values, list):
-                for flavor_val in flavor_not_values:
-                    conditions.append("(flavor_text IS NULL OR LOWER(flavor_text) NOT LIKE ?)")
-                    params.append(f"%{flavor_val.lower()}%")
-            else:
-                conditions.append("(flavor_text IS NULL OR LOWER(flavor_text) NOT LIKE ?)")
-                params.append(f"%{flavor_not_values.lower()}%")
-
-        # Set filter
-        if "set" in filters:
-            conditions.append("LOWER(set_code) = ?")
-            params.append(filters["set"].lower())
-
-        # Set NOT filter
-        if "set_not" in filters:
-            conditions.append("LOWER(set_code) != ?")
-            params.append(filters["set_not"].lower())
-
-        # Rarity filter
-        if "rarity" in filters:
-            conditions.append("LOWER(rarity) = ?")
-            params.append(filters["rarity"].lower())
-
-        # Rarity NOT filter
-        if "rarity_not" in filters:
-            conditions.append("LOWER(rarity) != ?")
-            params.append(filters["rarity_not"].lower())
+        # Rarity filters
+        self._add_exact_filter(filters, "rarity", "rarity", conditions, params)
+        self._add_exact_filter(filters, "rarity_not", "rarity", conditions, params, negated=True)
 
         # Format legality filter
         if "format" in filters:
@@ -1085,10 +1150,8 @@ class CardStore:
                     f"OR json_extract(legalities, '$.{format_name}') = 'restricted')"
                 )
             else:
-                # Invalid format returns empty results
                 conditions.append("1=0")
 
-        # Format NOT filter (cards NOT legal in format)
         if "format_not" in filters:
             format_name = filters["format_not"].lower()
             if format_name in VALID_FORMATS:
@@ -1097,81 +1160,18 @@ class CardStore:
                     f"OR (json_extract(legalities, '$.{format_name}') != 'legal' "
                     f"AND json_extract(legalities, '$.{format_name}') != 'restricted'))"
                 )
-            else:
-                # Invalid format_not matches all cards (no cards are legal in invalid format)
-                pass
 
-        # Power filter
-        if "power" in filters:
-            power_filter = filters["power"]
-            value = power_filter.get("value")
-            operator = power_filter.get("operator", "=")
-            sql_op = OPERATOR_MAP.get(operator, "=")
-            if value == "*":
-                conditions.append("power = '*'")
-            else:
-                conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
-                params.append(value)
+        # Power/Toughness filters (with special '*' handling)
+        self._add_stat_filter(filters, "power", "power", conditions, params)
+        self._add_stat_filter(filters, "power_not", "power", conditions, params, negated=True)
+        self._add_stat_filter(filters, "toughness", "toughness", conditions, params)
+        self._add_stat_filter(filters, "toughness_not", "toughness", conditions, params, negated=True)
 
-        # Power NOT filter
-        if "power_not" in filters:
-            power_not_filter = filters["power_not"]
-            value = power_not_filter.get("value")
-            operator = power_not_filter.get("operator", "=")
-            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-            if value == "*":
-                conditions.append("power != '*'")
-            else:
-                conditions.append(f"CAST(power AS INTEGER) {sql_op} ?")
-                params.append(value)
+        # Loyalty filters
+        self._add_numeric_filter(filters, "loyalty", "CAST(loyalty AS INTEGER)", conditions, params)
+        self._add_numeric_filter(filters, "loyalty_not", "CAST(loyalty AS INTEGER)", conditions, params, negated=True)
 
-        # Toughness filter
-        if "toughness" in filters:
-            toughness_filter = filters["toughness"]
-            value = toughness_filter.get("value")
-            operator = toughness_filter.get("operator", "=")
-            sql_op = OPERATOR_MAP.get(operator, "=")
-            if value == "*":
-                conditions.append("toughness = '*'")
-            else:
-                conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
-                params.append(value)
-
-        # Toughness NOT filter
-        if "toughness_not" in filters:
-            toughness_not_filter = filters["toughness_not"]
-            value = toughness_not_filter.get("value")
-            operator = toughness_not_filter.get("operator", "=")
-            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-            if value == "*":
-                conditions.append("toughness != '*'")
-            else:
-                conditions.append(f"CAST(toughness AS INTEGER) {sql_op} ?")
-                params.append(value)
-
-        # Loyalty filter
-        if "loyalty" in filters:
-            loyalty_filter = filters["loyalty"]
-            value = loyalty_filter.get("value")
-            operator = loyalty_filter.get("operator", "=")
-            sql_op = OPERATOR_MAP.get(operator, "=")
-            conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
-            params.append(value)
-
-        # Loyalty NOT filter
-        if "loyalty_not" in filters:
-            loyalty_not_filter = filters["loyalty_not"]
-            value = loyalty_not_filter.get("value")
-            operator = loyalty_not_filter.get("operator", "=")
-            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-            conditions.append(f"CAST(loyalty AS INTEGER) {sql_op} ?")
-            params.append(value)
-
-        # Collector number filter
-        # Note: For numeric comparisons (>, <, >=, <=), CAST handles alphanumeric
-        # collector numbers like "1a" or "★" by extracting the numeric prefix (or 0).
-        # This is acceptable behavior since numeric comparisons on non-numeric
-        # collector numbers are inherently ambiguous.
+        # Collector number filter (special handling for alphanumeric values)
         if "collector_number" in filters:
             cn_filter = filters["collector_number"]
             value = cn_filter.get("value")
@@ -1181,12 +1181,10 @@ class CardStore:
                 params.append(str(value))
             else:
                 sql_op = OPERATOR_MAP.get(operator, "=")
-                # Extract numeric prefix for comparison (e.g., "100a" -> 100)
                 numeric_value = _extract_numeric_prefix(str(value))
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
                 params.append(numeric_value)
 
-        # Collector number NOT filter
         if "collector_number_not" in filters:
             cn_not_filter = filters["collector_number_not"]
             value = cn_not_filter.get("value")
@@ -1196,16 +1194,11 @@ class CardStore:
                 params.append(str(value))
             else:
                 sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-                # Extract numeric prefix for comparison (e.g., "100a" -> 100)
                 numeric_value = _extract_numeric_prefix(str(value))
                 conditions.append(f"CAST(collector_number AS INTEGER) {sql_op} ?")
                 params.append(numeric_value)
 
-        # Price filter
-        # Design: Cards without price data (NULL) are excluded from price comparisons.
-        # This is intentional - "usd<5" should only match cards with known USD prices,
-        # not cards where we don't know the price. CAST(NULL AS REAL) returns NULL,
-        # and NULL comparisons return false, achieving this behavior.
+        # Price filter (JSON extraction with currency validation)
         if "price" in filters:
             price_filter = filters["price"]
             currency = price_filter.get("currency", "usd").lower()
@@ -1218,7 +1211,6 @@ class CardStore:
                 )
                 params.append(value)
 
-        # Price NOT filter
         if "price_not" in filters:
             price_not_filter = filters["price_not"]
             currency = price_not_filter.get("currency", "usd").lower()
@@ -1231,73 +1223,30 @@ class CardStore:
                 )
                 params.append(value)
 
-        # Keyword filter
-        # Design: Parser normalizes keywords to title case (e.g., "Flying"), and we use
-        # case-insensitive LIKE here. This double-normalization is intentional - it ensures
-        # matching works regardless of how keywords are stored in the database.
-        if "keyword" in filters:
-            keyword_values = filters["keyword"]
-            if isinstance(keyword_values, list):
-                for keyword in keyword_values:
-                    conditions.append("LOWER(keywords) LIKE ?")
-                    params.append(f'%"{keyword.lower()}"%')
-            else:
-                conditions.append("LOWER(keywords) LIKE ?")
-                params.append(f'%"{keyword_values.lower()}"%')
+        # Keyword filters (JSON array search)
+        self._add_json_array_filter(filters, "keyword", "keywords", conditions, params)
+        self._add_json_array_filter(filters, "keyword_not", "keywords", conditions, params, negated=True)
 
-        # Keyword NOT filter
-        if "keyword_not" in filters:
-            keyword_not_values = filters["keyword_not"]
-            if isinstance(keyword_not_values, list):
-                for keyword in keyword_not_values:
-                    conditions.append("(keywords IS NULL OR LOWER(keywords) NOT LIKE ?)")
-                    params.append(f'%"{keyword.lower()}"%')
-            else:
-                conditions.append("(keywords IS NULL OR LOWER(keywords) NOT LIKE ?)")
-                params.append(f'%"{keyword_not_values.lower()}"%')
+        # Artist filters
+        self._add_like_filter(filters, "artist", "artist", conditions, params)
+        self._add_like_filter(filters, "artist_not", "artist", conditions, params, negated=True)
 
-        # Artist filter
-        # Design: Uses partial match (LIKE %...%) because artist names are often
-        # searched by partial name (e.g., a:seb matches "Seb McKinnon")
-        if "artist" in filters:
-            artist_value = filters["artist"]
-            conditions.append("LOWER(artist) LIKE ?")
-            params.append(f"%{artist_value.lower()}%")
+        # Year filters
+        self._add_numeric_filter(
+            filters, "year", "CAST(substr(released_at, 1, 4) AS INTEGER)", conditions, params
+        )
+        self._add_numeric_filter(
+            filters, "year_not", "CAST(substr(released_at, 1, 4) AS INTEGER)", conditions, params, negated=True
+        )
 
-        # Artist NOT filter
-        if "artist_not" in filters:
-            artist_not_value = filters["artist_not"]
-            conditions.append("(artist IS NULL OR LOWER(artist) NOT LIKE ?)")
-            params.append(f"%{artist_not_value.lower()}%")
-
-        # Year filter
-        if "year" in filters:
-            year_filter = filters["year"]
-            value = year_filter.get("value")
-            operator = year_filter.get("operator", "=")
-            sql_op = OPERATOR_MAP.get(operator, "=")
-            conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
-            params.append(value)
-
-        # Year NOT filter
-        if "year_not" in filters:
-            year_not_filter = filters["year_not"]
-            value = year_not_filter.get("value")
-            operator = year_not_filter.get("operator", "=")
-            sql_op = INVERTED_OPERATOR_MAP.get(operator, "!=")
-            conditions.append(f"CAST(substr(released_at, 1, 4) AS INTEGER) {sql_op} ?")
-            params.append(value)
-
-        # Banned in format filter (e.g., banned:modern)
+        # Banned in format filter
         if "banned" in filters:
             format_name = filters["banned"].lower()
             if format_name in VALID_FORMATS:
                 conditions.append(f"json_extract(legalities, '$.{format_name}') = 'banned'")
             else:
-                # Invalid format returns empty results
                 conditions.append("1=0")
 
-        # Banned NOT filter (cards NOT banned in format)
         if "banned_not" in filters:
             format_name = filters["banned_not"].lower()
             if format_name in VALID_FORMATS:
@@ -1306,24 +1255,21 @@ class CardStore:
                     f"OR json_extract(legalities, '$.{format_name}') != 'banned')"
                 )
 
-        # Produces mana filter (e.g., produces:g, produces:c)
+        # Produces mana filter (color array with colorless handling)
         if "produces" in filters:
             produced_colors = filters["produces"]
             if isinstance(produced_colors, list):
                 if len(produced_colors) == 0:
-                    # Empty list means colorless (produces:c) - check for "C" in produced_mana
                     conditions.append("produced_mana LIKE '%\"C\"%'")
                 else:
                     for color in produced_colors:
                         conditions.append("produced_mana LIKE ?")
                         params.append(f'%"{color}"%')
 
-        # Produces NOT filter
         if "produces_not" in filters:
             produced_colors = filters["produces_not"]
             if isinstance(produced_colors, list):
                 if len(produced_colors) == 0:
-                    # Empty list means colorless (-produces:c) - exclude cards with "C"
                     conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE '%\"C\"%')")
                 else:
                     for color in produced_colors:
@@ -1331,58 +1277,19 @@ class CardStore:
                             conditions.append("(produced_mana IS NULL OR produced_mana NOT LIKE ?)")
                             params.append(f'%"{color}"%')
 
-        # Watermark filter (e.g., wm:phyrexian)
-        # Design: Uses exact match (=) because watermarks are fixed values from a
-        # known set (e.g., "phyrexian", "selesnya") - partial matching would cause
-        # false positives (e.g., wm:sel matching both "selesnya" and other watermarks)
-        if "watermark" in filters:
-            watermark_value = filters["watermark"]
-            conditions.append("LOWER(watermark) = ?")
-            params.append(watermark_value.lower())
+        # Watermark filters
+        self._add_exact_filter(filters, "watermark", "watermark", conditions, params)
+        self._add_exact_filter(filters, "watermark_not", "watermark", conditions, params, negated=True)
 
-        # Watermark NOT filter
-        if "watermark_not" in filters:
-            watermark_not_value = filters["watermark_not"]
-            conditions.append("(watermark IS NULL OR LOWER(watermark) != ?)")
-            params.append(watermark_not_value.lower())
+        # Layout filters
+        self._add_exact_filter(filters, "layout", "layout", conditions, params)
+        self._add_exact_filter(filters, "layout_not", "layout", conditions, params, negated=True)
 
-        # Layout filter (e.g., layout:transform, layout:adventure)
-        # Uses exact match since layouts are fixed values
-        if "layout" in filters:
-            layout_value = filters["layout"]
-            conditions.append("LOWER(layout) = ?")
-            params.append(layout_value.lower())
+        # Produces token filters (JSON array search)
+        self._add_json_array_filter(filters, "produces_token", "produces_tokens", conditions, params)
+        self._add_json_array_filter(filters, "produces_token_not", "produces_tokens", conditions, params, negated=True)
 
-        # Layout NOT filter
-        if "layout_not" in filters:
-            layout_not_value = filters["layout_not"]
-            conditions.append("(layout IS NULL OR LOWER(layout) != ?)")
-            params.append(layout_not_value.lower())
-
-        # Produces token filter (e.g., produces_token:zombie, pt:"Goblin Token")
-        # Searches the produces_tokens JSON array for matching token names
-        if "produces_token" in filters:
-            token_values = filters["produces_token"]
-            if isinstance(token_values, list):
-                for token_name in token_values:
-                    conditions.append("LOWER(produces_tokens) LIKE ?")
-                    params.append(f'%"{token_name.lower()}"%')
-            else:
-                conditions.append("LOWER(produces_tokens) LIKE ?")
-                params.append(f'%"{token_values.lower()}"%')
-
-        # Produces token NOT filter
-        if "produces_token_not" in filters:
-            token_not_values = filters["produces_token_not"]
-            if isinstance(token_not_values, list):
-                for token_name in token_not_values:
-                    conditions.append("(produces_tokens IS NULL OR LOWER(produces_tokens) NOT LIKE ?)")
-                    params.append(f'%"{token_name.lower()}"%')
-            else:
-                conditions.append("(produces_tokens IS NULL OR LOWER(produces_tokens) NOT LIKE ?)")
-                params.append(f'%"{token_not_values.lower()}"%')
-
-        # Block filter (e.g., b:innistrad)
+        # Block filter (set code IN clause)
         if "block" in filters:
             block_name = filters["block"].lower()
             block_sets = BLOCK_MAP.get(block_name, [])
@@ -1391,10 +1298,8 @@ class CardStore:
                 conditions.append(f"LOWER(set_code) IN ({placeholders})")
                 params.extend(block_sets)
             else:
-                # Unknown block returns empty results
                 conditions.append("1=0")
 
-        # Block NOT filter
         if "block_not" in filters:
             block_name = filters["block_not"].lower()
             block_sets = BLOCK_MAP.get(block_name, [])
