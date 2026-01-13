@@ -35,7 +35,8 @@
       "mcp__scryfall-local__refresh_data",
       "Bash(timeout 30 python3:*)",
       "Bash(xxd:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(git -C /Users/jason/Repos/scryfall-local log --oneline)"
     ]
   }
 }
