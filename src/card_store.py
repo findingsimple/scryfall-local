@@ -1416,40 +1416,15 @@ class CardStore:
         cursor = self._conn.cursor()
 
         # No filter - random from all cards
-        if not parsed or parsed.is_empty:
+        if not parsed or (parsed.is_empty and not parsed.has_or_clause):
             cursor.execute("SELECT * FROM cards ORDER BY RANDOM() LIMIT 1")
             row = cursor.fetchone()
             return self._row_to_dict(row) if row else None
 
-        # Handle OR queries
-        if parsed.has_or_clause and parsed.or_groups:
-            group_clauses = []
-            all_params: list[Any] = []
+        # Use shared WHERE clause builder for filtered queries
+        where_clause, params = self._build_where_clause(parsed)
 
-            for group_filters in parsed.or_groups:
-                merged: dict[str, Any] = {}
-                for f in group_filters:
-                    merged.update(f)
-
-                conditions, params = self._build_conditions_for_filters(merged)
-                if conditions:
-                    group_clauses.append(f"({' AND '.join(conditions)})")
-                    all_params.extend(params)
-
-            if group_clauses:
-                where_clause = " OR ".join(group_clauses)
-                query = f"SELECT * FROM cards WHERE {where_clause} ORDER BY RANDOM() LIMIT 1"
-                cursor.execute(query, all_params)
-                row = cursor.fetchone()
-                return self._row_to_dict(row) if row else None
-            else:
-                return None
-
-        # Standard AND query
-        conditions, params = self._build_conditions_for_filters(parsed.filters)
-
-        if conditions:
-            where_clause = " AND ".join(conditions)
+        if where_clause:
             query = f"SELECT * FROM cards WHERE {where_clause} ORDER BY RANDOM() LIMIT 1"
         else:
             query = "SELECT * FROM cards ORDER BY RANDOM() LIMIT 1"
