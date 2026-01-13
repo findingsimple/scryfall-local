@@ -161,7 +161,8 @@ class TestCardStoreInsert:
             original_rowid = cursor.fetchone()[0]
 
             # Verify FTS works with original text
-            results = store.query_by_oracle_text("3 damage")
+            parsed = ParsedQuery(filters={"oracle_text": "3 damage"}, raw_query='o:"3 damage"')
+            results = store.execute_query(parsed)
             assert len(results) == 1
             assert results[0]["name"] == "Lightning Bolt"
 
@@ -179,11 +180,13 @@ class TestCardStoreInsert:
             assert store.get_card_count() == 1
 
             # Verify FTS is updated - old text should NOT match
-            results = store.query_by_oracle_text("3 damage")
+            parsed = ParsedQuery(filters={"oracle_text": "3 damage"}, raw_query='o:"3 damage"')
+            results = store.execute_query(parsed)
             assert len(results) == 0, "Old oracle text should not be in FTS index"
 
             # Verify FTS has new text
-            results = store.query_by_oracle_text("4 damage")
+            parsed = ParsedQuery(filters={"oracle_text": "4 damage"}, raw_query='o:"4 damage"')
+            results = store.execute_query(parsed)
             assert len(results) == 1
             assert results[0]["name"] == "Lightning Bolt"
 
@@ -208,11 +211,13 @@ class TestCardStoreInsert:
 
             # Only the latest text should be searchable
             for i in range(4):
-                results = store.query_by_oracle_text(f"Deals {i} damage")
+                parsed = ParsedQuery(filters={"oracle_text": f"Deals {i} damage"}, raw_query=f'o:"Deals {i} damage"')
+                results = store.execute_query(parsed)
                 assert len(results) == 0, f"Old text 'Deals {i} damage' should not match"
 
             # Latest update should match
-            results = store.query_by_oracle_text("Deals 4 damage")
+            parsed = ParsedQuery(filters={"oracle_text": "Deals 4 damage"}, raw_query='o:"Deals 4 damage"')
+            results = store.execute_query(parsed)
             assert len(results) == 1
 
             store.close()
@@ -250,7 +255,8 @@ class TestCardStoreQueryByName:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.search_by_partial_name("bolt")
+            parsed = ParsedQuery(filters={"name_partial": "bolt"}, raw_query="bolt")
+            results = store.execute_query(parsed)
             assert len(results) >= 1
             assert any(c["name"] == "Lightning Bolt" for c in results)
 
@@ -262,7 +268,8 @@ class TestCardStoreQueryByName:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.search_by_partial_name("LIGHTNING")
+            parsed = ParsedQuery(filters={"name_partial": "LIGHTNING"}, raw_query="LIGHTNING")
+            results = store.execute_query(parsed)
             assert len(results) >= 1
             assert any(c["name"] == "Lightning Bolt" for c in results)
 
@@ -278,7 +285,11 @@ class TestCardStoreQueryByColor:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_color(["R"], operator=":")
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": ":", "value": ["R"]}},
+                raw_query="c:r",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all("R" in c["colors"] for c in results)
 
@@ -291,7 +302,11 @@ class TestCardStoreQueryByColor:
             store.insert_cards(sample_cards)
 
             # Should find Nicol Bolas (UBR)
-            results = store.query_by_color(["U", "B", "R"], operator=":")
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": ":", "value": ["U", "B", "R"]}},
+                raw_query="c:ubr",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert any("Nicol Bolas" in c["name"] for c in results)
 
             store.close()
@@ -302,7 +317,11 @@ class TestCardStoreQueryByColor:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_color([], operator=":")
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": ":", "value": []}},
+                raw_query="c:colorless",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert any(c["name"] == "Sol Ring" for c in results)
 
@@ -318,7 +337,11 @@ class TestCardStoreQueryByCmc:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_cmc(1, operator="=")
+            parsed = ParsedQuery(
+                filters={"cmc": {"operator": "=", "value": 1}},
+                raw_query="cmc=1",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert all(c["cmc"] == 1 for c in results)
 
             store.close()
@@ -329,7 +352,11 @@ class TestCardStoreQueryByCmc:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_cmc(5, operator=">=")
+            parsed = ParsedQuery(
+                filters={"cmc": {"operator": ">=", "value": 5}},
+                raw_query="cmc>=5",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert all(c["cmc"] >= 5 for c in results)
             assert len(results) >= 1
 
@@ -341,7 +368,11 @@ class TestCardStoreQueryByCmc:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_cmc(2, operator="<")
+            parsed = ParsedQuery(
+                filters={"cmc": {"operator": "<", "value": 2}},
+                raw_query="cmc<2",
+            )
+            results = store.execute_query(parsed, limit=100)
             assert all(c["cmc"] < 2 for c in results)
 
             store.close()
@@ -356,7 +387,8 @@ class TestCardStoreQueryByType:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_type("creature")
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all("Creature" in c["type_line"] for c in results)
 
@@ -368,7 +400,8 @@ class TestCardStoreQueryByType:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_type("instant")
+            parsed = ParsedQuery(filters={"type": "instant"}, raw_query="t:instant")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all("Instant" in c["type_line"] for c in results)
 
@@ -380,7 +413,8 @@ class TestCardStoreQueryByType:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_type("dragon")
+            parsed = ParsedQuery(filters={"type": "dragon"}, raw_query="t:dragon")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all("Dragon" in c["type_line"] for c in results)
 
@@ -388,7 +422,7 @@ class TestCardStoreQueryByType:
 
 
 class TestCardStoreQueryByOracleText:
-    """Test oracle text queries using FTS5."""
+    """Test oracle text queries."""
 
     def test_query_oracle_simple(self, sample_cards: list[dict[str, Any]]):
         """Should find cards by oracle text keyword."""
@@ -396,7 +430,8 @@ class TestCardStoreQueryByOracleText:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_oracle_text("flying")
+            parsed = ParsedQuery(filters={"oracle_text": "flying"}, raw_query="o:flying")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all("flying" in c["oracle_text"].lower() for c in results)
 
@@ -408,19 +443,20 @@ class TestCardStoreQueryByOracleText:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_oracle_text("deals 3 damage")
+            parsed = ParsedQuery(filters={"oracle_text": "deals 3 damage"}, raw_query='o:"deals 3 damage"')
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
 
             store.close()
 
     def test_query_oracle_fts(self, sample_cards: list[dict[str, Any]]):
-        """FTS should be efficient for text search."""
+        """Should find cards by oracle text search."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            # Should use FTS index
-            results = store.query_by_oracle_text("counter target spell")
+            parsed = ParsedQuery(filters={"oracle_text": "counter target spell"}, raw_query='o:"counter target spell"')
+            results = store.execute_query(parsed, limit=100)
             assert any(c["name"] == "Counterspell" for c in results)
 
             store.close()
@@ -435,7 +471,8 @@ class TestCardStoreQueryBySet:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_set("leb")
+            parsed = ParsedQuery(filters={"set": "leb"}, raw_query="set:leb")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all(c["set"] == "leb" for c in results)
 
@@ -451,7 +488,8 @@ class TestCardStoreQueryByRarity:
             store = CardStore(Path(tmpdir) / "cards.db")
             store.insert_cards(sample_cards)
 
-            results = store.query_by_rarity("mythic")
+            parsed = ParsedQuery(filters={"rarity": "mythic"}, raw_query="r:mythic")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert all(c["rarity"] == "mythic" for c in results)
 
@@ -1335,7 +1373,8 @@ class TestCardStoreSecurity:
 
             # Attempt SQL injection
             malicious_query = "' OR '1'='1"
-            results = store.search_by_partial_name(malicious_query)
+            parsed = ParsedQuery(filters={"name_partial": malicious_query}, raw_query=malicious_query)
+            results = store.execute_query(parsed)
 
             # Should not return all cards
             assert len(results) < len(sample_cards)
@@ -1360,9 +1399,9 @@ class TestCardStoreSecurity:
             for inp in test_inputs:
                 # These should not raise exceptions
                 store.get_card_by_name(inp)
-                store.search_by_partial_name(inp)
-                store.query_by_type(inp)
-                store.query_by_oracle_text(inp)
+                store.execute_query(ParsedQuery(filters={"name_partial": inp}, raw_query=inp))
+                store.execute_query(ParsedQuery(filters={"type": inp}, raw_query=f"t:{inp}"))
+                store.execute_query(ParsedQuery(filters={"oracle_text": inp}, raw_query=f"o:{inp}"))
 
             # Table should still be intact
             assert store.get_card_count() == len(sample_cards)
@@ -2088,12 +2127,14 @@ class TestDoubleFacedCards:
             store.insert_cards(double_faced_cards)
 
             # Search for Delver by its oracle text
-            results = store.query_by_oracle_text("upkeep")
+            parsed = ParsedQuery(filters={"oracle_text": "upkeep"}, raw_query="o:upkeep")
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert any("Delver" in r["name"] for r in results)
 
             # Search for Bonecrusher by Stomp text
-            results = store.query_by_oracle_text("Damage can't be prevented")
+            parsed = ParsedQuery(filters={"oracle_text": "Damage can't be prevented"}, raw_query='o:"Damage can\'t be prevented"')
+            results = store.execute_query(parsed, limit=100)
             assert len(results) >= 1
             assert any("Bonecrusher" in r["name"] for r in results)
 
@@ -2108,7 +2149,8 @@ class TestDoubleFacedCards:
             store.insert_cards(double_faced_cards)
 
             # Search for creatures
-            results = store.query_by_type("creature")
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            results = store.execute_query(parsed, limit=100)
             creature_names = [r["name"] for r in results]
             # Delver, Bonecrusher, and Jace (creature side) should match
             assert any("Delver" in name for name in creature_names)
