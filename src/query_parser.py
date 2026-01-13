@@ -294,6 +294,21 @@ class QueryParser:
                 supported_syntax=SUPPORTED_SYNTAX,
             ) from e
 
+    # Token type categories for value extraction in _tokenize
+    _OPERATOR_STRING_TOKENS = frozenset({'COLOR', 'COLOR_IDENTITY', 'COLLECTOR_NUMBER', 'MANA'})
+    _OPERATOR_FLOAT_TOKENS = frozenset({'CMC'})
+    _OPERATOR_INT_TOKENS = frozenset({'YEAR'})
+    _STAT_TOKENS = frozenset({'POWER', 'TOUGHNESS', 'LOYALTY'})
+    _QUOTED_TOKENS = frozenset({
+        'TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED',
+        'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED', 'PRODUCES_TOKEN_QUOTED'
+    })
+    _SIMPLE_VALUE_TOKENS = frozenset({
+        'TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
+        'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT',
+        'PRODUCES_TOKEN', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'
+    })
+
     def _tokenize(self, query: str) -> list[tuple[str, Any]]:
         """Tokenize query string."""
         tokens = []
@@ -309,53 +324,26 @@ class QueryParser:
             for pattern, token_type in self._patterns:
                 match = pattern.match(query, pos)
                 if match:
-                    if token_type in ('COLOR', 'COLOR_IDENTITY'):
-                        operator = match.group(1)
+                    # Extract token value based on category
+                    if token_type in self._OPERATOR_STRING_TOKENS:
+                        tokens.append((token_type, (match.group(1), match.group(2))))
+                    elif token_type in self._OPERATOR_FLOAT_TOKENS:
+                        tokens.append((token_type, (match.group(1), float(match.group(2)))))
+                    elif token_type in self._OPERATOR_INT_TOKENS:
+                        tokens.append((token_type, (match.group(1), int(match.group(2)))))
+                    elif token_type in self._STAT_TOKENS:
+                        # Keep '*' as string, convert numbers to int
                         value = match.group(2)
-                        tokens.append((token_type, (operator, value)))
-                    elif token_type == 'CMC':
-                        operator = match.group(1)
-                        value = float(match.group(2))
-                        tokens.append((token_type, (operator, value)))
-                    elif token_type in ('POWER', 'TOUGHNESS', 'LOYALTY'):
-                        operator = match.group(1)
-                        value = match.group(2)
-                        # Keep * as string, convert numbers to int
-                        if value != '*':
-                            value = int(value)
-                        tokens.append((token_type, (operator, value)))
-                    elif token_type == 'COLLECTOR_NUMBER':
-                        operator = match.group(1)
-                        value = match.group(2)
-                        tokens.append((token_type, (operator, value)))
+                        tokens.append((token_type, (match.group(1), value if value == '*' else int(value))))
                     elif token_type == 'PRICE':
-                        # Extract currency from the full match
+                        # Extract currency from prefix
                         full_match = match.group(0).lower()
-                        if full_match.startswith('usd'):
-                            currency = 'usd'
-                        elif full_match.startswith('eur'):
-                            currency = 'eur'
-                        else:
-                            currency = 'tix'
-                        operator = match.group(1)
-                        value = float(match.group(2))
-                        tokens.append((token_type, (currency, operator, value)))
-                    elif token_type == 'YEAR':
-                        operator = match.group(1)
-                        value = int(match.group(2))
-                        tokens.append((token_type, (operator, value)))
-                    elif token_type == 'MANA':
-                        operator = match.group(1)
-                        mana_str = match.group(2)
-                        tokens.append((token_type, (operator, mana_str)))
-                    elif token_type in ('TYPE_QUOTED', 'ORACLE_QUOTED', 'KEYWORD_QUOTED', 'FLAVOR_QUOTED', 'ARTIST_QUOTED', 'FULL_ORACLE_QUOTED', 'PRODUCES_TOKEN_QUOTED'):
+                        currency = 'usd' if full_match.startswith('usd') else \
+                                   'eur' if full_match.startswith('eur') else 'tix'
+                        tokens.append((token_type, (currency, match.group(1), float(match.group(2)))))
+                    elif token_type in self._QUOTED_TOKENS:
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
-                    elif token_type in ('TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
-                                       'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT', 'PRODUCES_TOKEN'):
-                        tokens.append((token_type, match.group(1)))
-                    elif token_type in ('EXACT_NAME', 'STRICT_NAME'):
-                        tokens.append((token_type, match.group(1)))
-                    elif token_type == 'PARTIAL_NAME':
+                    elif token_type in self._SIMPLE_VALUE_TOKENS:
                         tokens.append((token_type, match.group(1)))
                     else:
                         tokens.append((token_type, match.group(0)))
