@@ -792,11 +792,15 @@ class TestCardStoreQueryByKeyword:
             )
             results = store.execute_query(parsed)
 
-            # Only Multi-Keyword Angel has both
-            assert len(results) == 1
-            assert results[0]["name"] == "Multi-Keyword Angel"
-            assert "Flying" in results[0].get("keywords", [])
-            assert "Vigilance" in results[0].get("keywords", [])
+            # Serra Angel and Multi-Keyword Angel both have Flying + Vigilance
+            assert len(results) >= 2
+            result_names = [r["name"] for r in results]
+            assert "Serra Angel" in result_names
+            assert "Multi-Keyword Angel" in result_names
+            # All results should have both keywords
+            for card in results:
+                assert "Flying" in card.get("keywords", [])
+                assert "Vigilance" in card.get("keywords", [])
 
             store.close()
 

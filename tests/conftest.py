@@ -275,29 +275,19 @@ def colorless_artifact(sample_cards: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @pytest.fixture
-def sample_cards_with_keywords() -> list[dict[str, Any]]:
-    """Cards with various keywords for testing keyword filtering."""
-    return [
-        {
-            "id": "kw-test-flying",
-            "oracle_id": "kw-oracle-flying",
-            "name": "Flying Test Creature",
-            "mana_cost": "{1}{W}",
-            "cmc": 2.0,
-            "type_line": "Creature — Bird",
-            "oracle_text": "Flying",
-            "keywords": ["Flying"],
-            "power": "2",
-            "toughness": "1",
-            "colors": ["W"],
-            "color_identity": ["W"],
-            "set": "tst",
-            "set_name": "Test Set",
-            "rarity": "common",
-            "image_uris": {},
-            "legalities": {"commander": "legal"},
-            "prices": {},
-        },
+def sample_cards_with_keywords(sample_cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cards with various keywords for testing keyword filtering.
+
+    Extends sample_cards with additional keyword-specific test cards.
+    sample_cards already includes cards with Flying (Shivan Dragon, Serra Angel)
+    and cards without keywords (Lightning Bolt, Counterspell, etc.).
+
+    This fixture adds cards needed for specific keyword tests:
+    - Deathtouch Test Creature: Tests unique keyword filtering
+    - Multi-Keyword Angel: Tests multiple keywords (Flying, Vigilance, Lifelink)
+    - First Strike Knight: Tests first strike keyword
+    """
+    keyword_test_cards = [
         {
             "id": "kw-test-deathtouch",
             "oracle_id": "kw-oracle-deathtouch",
@@ -358,25 +348,8 @@ def sample_cards_with_keywords() -> list[dict[str, Any]]:
             "legalities": {"commander": "legal"},
             "prices": {},
         },
-        {
-            "id": "kw-test-none",
-            "oracle_id": "kw-oracle-none",
-            "name": "No Keywords Spell",
-            "mana_cost": "{U}",
-            "cmc": 1.0,
-            "type_line": "Instant",
-            "oracle_text": "Draw a card.",
-            "keywords": [],
-            "colors": ["U"],
-            "color_identity": ["U"],
-            "set": "tst",
-            "set_name": "Test Set",
-            "rarity": "common",
-            "image_uris": {},
-            "legalities": {"commander": "legal"},
-            "prices": {},
-        },
     ]
+    return sample_cards + keyword_test_cards
 
 
 @pytest.fixture
