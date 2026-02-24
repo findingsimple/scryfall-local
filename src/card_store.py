@@ -868,8 +868,10 @@ class CardStore:
                 params.append(f'%"{c}"%')
             other_colors = all_colors - set(colors)
             if other_colors:
-                or_conditions = " OR ".join(f"{column} LIKE '%\"{c}\"%'" for c in other_colors)
+                or_conditions = " OR ".join(f"{column} LIKE ?" for _ in other_colors)
                 conditions.append(f"({or_conditions})")
+                for c in other_colors:
+                    params.append(f'%"{c}"%')
 
         elif operator == "<":
             # Strict subset: fewer colors than specified
@@ -879,8 +881,10 @@ class CardStore:
                 params.append(f'%"{c}"%')
             if len(colors) > 1:
                 # At least one specified color must be missing
-                not_all = " OR ".join(f"{column} NOT LIKE '%\"{c}\"%'" for c in colors)
+                not_all = " OR ".join(f"{column} NOT LIKE ?" for _ in colors)
                 conditions.append(f"({not_all})")
+                for c in colors:
+                    params.append(f'%"{c}"%')
 
     def _add_color_not_filter(
         self,

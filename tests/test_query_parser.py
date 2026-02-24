@@ -1268,3 +1268,28 @@ class TestParsedQueryObject:
         result = parser.parse("c:blue t:instant cmc:2")
 
         assert result.filter_count >= 3
+
+
+class TestQueryLengthLimit:
+    """Test query length validation."""
+
+    def test_rejects_query_exceeding_max_length(self):
+        """Query longer than MAX_QUERY_LENGTH should raise QueryError."""
+        parser = QueryParser()
+        long_query = "a" * (QueryParser.MAX_QUERY_LENGTH + 1)
+        with pytest.raises(QueryError, match="Query too long"):
+            parser.parse(long_query)
+
+    def test_accepts_query_at_max_length(self):
+        """Query exactly at MAX_QUERY_LENGTH should be accepted."""
+        parser = QueryParser()
+        # Use a valid partial name token that fills the limit
+        query = "a" * QueryParser.MAX_QUERY_LENGTH
+        result = parser.parse(query)
+        assert not result.is_empty
+
+    def test_accepts_normal_length_query(self):
+        """Typical queries should not be affected by the limit."""
+        parser = QueryParser()
+        result = parser.parse("c:blue t:instant o:draw cmc<=3")
+        assert result.filter_count >= 4

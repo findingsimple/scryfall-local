@@ -261,6 +261,8 @@ TOKEN_PATTERNS = [
 class QueryParser:
     """Parser for Scryfall-style queries using regex tokenization."""
 
+    MAX_QUERY_LENGTH = 1000
+
     def __init__(self):
         # Compile token patterns
         self._patterns = [
@@ -277,6 +279,13 @@ class QueryParser:
         if not query:
             logger.debug("Empty query, returning empty ParsedQuery")
             return ParsedQuery(raw_query=query)
+
+        # Reject excessively long queries
+        if len(query) > self.MAX_QUERY_LENGTH:
+            raise QueryError(
+                f"Query too long ({len(query)} characters, maximum {self.MAX_QUERY_LENGTH})",
+                hint="Simplify the query or use fewer search terms",
+            )
 
         try:
             tokens = self._tokenize(query)
