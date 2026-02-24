@@ -328,10 +328,10 @@ class CardStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_color_identity ON cards(color_identity)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_layout ON cards(layout)")
 
-        # FTS5 virtual table for text search (oracle text, type line, name)
+        # FTS5 virtual table for text search (oracle text, type line)
+        # Name search uses SQL LIKE for substring matching, so name is not indexed here.
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
-                name,
                 oracle_text,
                 type_line,
                 content='cards',
@@ -342,24 +342,24 @@ class CardStore:
         # Triggers to keep FTS in sync
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_ai AFTER INSERT ON cards BEGIN
-                INSERT INTO cards_fts(rowid, name, oracle_text, type_line)
-                VALUES (NEW.rowid, NEW.name, NEW.oracle_text, NEW.type_line);
+                INSERT INTO cards_fts(rowid, oracle_text, type_line)
+                VALUES (NEW.rowid, NEW.oracle_text, NEW.type_line);
             END
         """)
 
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_ad AFTER DELETE ON cards BEGIN
-                INSERT INTO cards_fts(cards_fts, rowid, name, oracle_text, type_line)
-                VALUES ('delete', OLD.rowid, OLD.name, OLD.oracle_text, OLD.type_line);
+                INSERT INTO cards_fts(cards_fts, rowid, oracle_text, type_line)
+                VALUES ('delete', OLD.rowid, OLD.oracle_text, OLD.type_line);
             END
         """)
 
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_au AFTER UPDATE ON cards BEGIN
-                INSERT INTO cards_fts(cards_fts, rowid, name, oracle_text, type_line)
-                VALUES ('delete', OLD.rowid, OLD.name, OLD.oracle_text, OLD.type_line);
-                INSERT INTO cards_fts(rowid, name, oracle_text, type_line)
-                VALUES (NEW.rowid, NEW.name, NEW.oracle_text, NEW.type_line);
+                INSERT INTO cards_fts(cards_fts, rowid, oracle_text, type_line)
+                VALUES ('delete', OLD.rowid, OLD.oracle_text, OLD.type_line);
+                INSERT INTO cards_fts(rowid, oracle_text, type_line)
+                VALUES (NEW.rowid, NEW.oracle_text, NEW.type_line);
             END
         """)
 
