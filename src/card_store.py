@@ -190,6 +190,11 @@ def _extract_from_card_faces(card: dict[str, Any]) -> dict[str, Any]:
     return extracted
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so %, _, and \\ are treated as literals."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _escape_fts5(text: str) -> str:
     """Escape text for safe use in FTS5 MATCH queries.
 
@@ -662,11 +667,12 @@ class CardStore:
         values = values if isinstance(values, list) else [values]
 
         for val in values:
+            escaped = _escape_like(val.lower())
             if negated:
-                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ?)")
+                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ? ESCAPE '\\')")
             else:
-                conditions.append(f"LOWER({column}) LIKE ?")
-            params.append(f"%{val.lower()}%")
+                conditions.append(f"LOWER({column}) LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
 
     def _add_json_array_filter(
         self,
@@ -697,11 +703,12 @@ class CardStore:
         values = values if isinstance(values, list) else [values]
 
         for val in values:
+            escaped = _escape_like(val.lower())
             if negated:
-                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ?)")
+                conditions.append(f"({column} IS NULL OR LOWER({column}) NOT LIKE ? ESCAPE '\\')")
             else:
-                conditions.append(f"LOWER({column}) LIKE ?")
-            params.append(f'%"{val.lower()}"%')
+                conditions.append(f"LOWER({column}) LIKE ? ESCAPE '\\'")
+            params.append(f'%"{escaped}"%')
 
     def _add_exact_filter(
         self,

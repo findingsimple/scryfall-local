@@ -3052,3 +3052,126 @@ class TestFTS5Escaping:
     def test_escape_empty_string(self):
         from src.card_store import _escape_fts5
         assert _escape_fts5("") == '""'
+
+
+class TestLikeEscaping:
+    """Test the _escape_like helper function."""
+
+    def test_plain_text_unchanged(self):
+        from src.card_store import _escape_like
+        assert _escape_like("flying") == "flying"
+
+    def test_percent_escaped(self):
+        from src.card_store import _escape_like
+        assert _escape_like("100%") == "100\\%"
+
+    def test_underscore_escaped(self):
+        from src.card_store import _escape_like
+        assert _escape_like("a_b") == "a\\_b"
+
+    def test_backslash_escaped(self):
+        from src.card_store import _escape_like
+        assert _escape_like("a\\b") == "a\\\\b"
+
+    def test_combined(self):
+        from src.card_store import _escape_like
+        assert _escape_like("100%_\\x") == "100\\%\\_\\\\x"
+
+
+class TestLikeEscapingIntegration:
+    """Integration tests verifying LIKE wildcards are escaped in queries."""
+
+    def test_like_wildcards_escaped_in_name_search(self, sample_cards):
+        """Searching for '%' in a name should treat it as a literal character.
+
+        Without escaping, LIKE '%100%%' matches '100% Real' AND '100 Damage'
+        (the unescaped % matches any chars). With escaping, only the card
+        containing a literal '%' matches.
+        """
+        card_with_percent = sample_cards[0].copy()
+        card_with_percent["id"] = "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        card_with_percent["oracle_id"] = "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        card_with_percent["name"] = "100% Real"
+        card_with_percent["type_line"] = "Instant"
+        card_with_percent["oracle_text"] = "Do something."
+
+        # Decoy card: contains "100" but no literal "%"
+        decoy = sample_cards[0].copy()
+        decoy["id"] = "bbbb-cccc-dddd-eeee-ffffffffffff"
+        decoy["oracle_id"] = "bbbb-cccc-dddd-eeee-ffffffffffff"
+        decoy["name"] = "100 Damage"
+        decoy["type_line"] = "Sorcery"
+        decoy["oracle_text"] = "Deal 100 damage."
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards([card_with_percent, decoy] + sample_cards)
+
+            # Sanity: both cards match "100" without %
+            parsed = ParsedQuery(filters={"name_partial": "100"}, raw_query="100")
+            results = store.execute_query(parsed)
+            assert len(results) == 2
+
+            # With %, only the literal % card should match
+            parsed = ParsedQuery(filters={"name_partial": "100%"}, raw_query="100%")
+            results = store.execute_query(parsed)
+            assert len(results) == 1
+            assert results[0]["name"] == "100% Real"
+
+    def test_like_wildcards_escaped_in_oracle_text(self, sample_cards):
+        """Searching for '_' in oracle text via LIKE fallback treats it as literal.
+
+        Without escaping, LIKE '%x_1%' matches both 'X_1' and 'XA1' (the
+        unescaped _ matches any single character). With escaping, only the
+        literal underscore matches.
+        """
+        card_with_underscore = sample_cards[0].copy()
+        card_with_underscore["id"] = "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        card_with_underscore["oracle_id"] = "aaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        card_with_underscore["name"] = "Underscore Card"
+        card_with_underscore["type_line"] = "Instant"
+        card_with_underscore["oracle_text"] = "Deal X_1 damage."
+
+        # Decoy card: "XA1" matches unescaped _ but not literal _
+        decoy = sample_cards[0].copy()
+        decoy["id"] = "bbbb-cccc-dddd-eeee-ffffffffffff"
+        decoy["oracle_id"] = "bbbb-cccc-dddd-eeee-ffffffffffff"
+        decoy["name"] = "Decoy Card"
+        decoy["type_line"] = "Instant"
+        decoy["oracle_text"] = "Deal XA1 damage."
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards([card_with_underscore, decoy])
+
+            # Use negated oracle text to force LIKE path instead of FTS5.
+            # Negating X_1 should exclude Underscore Card but NOT Decoy Card
+            # (since Decoy has "XA1", not "X_1").
+            parsed = ParsedQuery(
+                filters={"oracle_text_not": "X_1"},
+                raw_query='-o:X_1',
+            )
+            results = store.execute_query(parsed)
+            names = [r["name"] for r in results]
+            assert "Underscore Card" not in names  # excluded by negation
+            assert "Decoy Card" in names  # NOT excluded: "XA1" != "X_1"
+
+    def test_like_wildcards_escaped_in_keyword(self, sample_cards):
+        """Searching for keyword with '%' should not wildcard-expand.
+
+        Without escaping, 'Fl%' would match 'Flying' via LIKE wildcard.
+        With escaping, 'Fl%' requires a literal '%' which no keyword has.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
+
+            # Baseline: "Flying" keyword returns results (proves data exists)
+            parsed = ParsedQuery(filters={"keyword": "Flying"}, raw_query='kw:Flying')
+            results = store.execute_query(parsed)
+            assert len(results) > 0, "Expected cards with Flying keyword in sample data"
+
+            # With %, no card has a keyword literally containing "Fl%"
+            parsed = ParsedQuery(filters={"keyword": "Fl%"}, raw_query='kw:"Fl%"')
+            results = store.execute_query(parsed)
+            assert len(results) == 0
