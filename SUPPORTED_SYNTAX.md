@@ -464,7 +464,8 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 - [ ] **order:/direction:** - Sort results
   - Syntax: `order:name`, `order:cmc`, `order:released`, `order:usd`, `direction:asc`, `direction:desc`
-  - Requires ORDER BY clause in SQL
+  - Default ordering already exists: BM25 relevance for text searches (`o:`, `t:`), alphabetical by name for others
+  - This feature would add user-controllable sort overrides
 
 ### Medium Priority
 
@@ -551,7 +552,7 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 **Query execution changes:**
 - `unique:` requires GROUP BY or DISTINCT ON logic
-- `order:` requires dynamic ORDER BY clause
+- `order:` requires dynamic ORDER BY clause (default ordering already in place: BM25 for FTS, name for others)
 - `prints:` requires COUNT subquery
 
 ## Not Planned

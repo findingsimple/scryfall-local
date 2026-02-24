@@ -190,6 +190,26 @@ def _extract_from_card_faces(card: dict[str, Any]) -> dict[str, Any]:
     return extracted
 
 
+def _escape_fts5(text: str) -> str:
+    """Escape text for safe use in FTS5 MATCH queries.
+
+    Wraps text in double quotes to create a phrase query, preventing
+    FTS5 operators (AND, OR, NOT, NEAR, *, ^) from being interpreted.
+    The text is still tokenized by FTS5 (word boundaries apply), but
+    operators are treated as literal tokens within the phrase.
+    Internal double quotes are escaped by doubling them.
+    """
+    escaped = text.replace('"', '""')
+    return f'"{escaped}"'
+
+
+# Filter keys eligible for FTS5 MATCH and their FTS5 column names
+_FTS_FILTER_MAP = {
+    "oracle_text": "oracle_text",
+    "type": "type_line",
+}
+
+
 class CardStore:
     """SQLite-based card storage with FTS5 text search."""
 
@@ -303,10 +323,9 @@ class CardStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_color_identity ON cards(color_identity)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_layout ON cards(layout)")
 
-        # FTS5 virtual table for oracle text search
+        # FTS5 virtual table for text search (oracle text, type line, name)
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
-                id,
                 name,
                 oracle_text,
                 type_line,
@@ -318,24 +337,24 @@ class CardStore:
         # Triggers to keep FTS in sync
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_ai AFTER INSERT ON cards BEGIN
-                INSERT INTO cards_fts(rowid, id, name, oracle_text, type_line)
-                VALUES (NEW.rowid, NEW.id, NEW.name, NEW.oracle_text, NEW.type_line);
+                INSERT INTO cards_fts(rowid, name, oracle_text, type_line)
+                VALUES (NEW.rowid, NEW.name, NEW.oracle_text, NEW.type_line);
             END
         """)
 
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_ad AFTER DELETE ON cards BEGIN
-                INSERT INTO cards_fts(cards_fts, rowid, id, name, oracle_text, type_line)
-                VALUES ('delete', OLD.rowid, OLD.id, OLD.name, OLD.oracle_text, OLD.type_line);
+                INSERT INTO cards_fts(cards_fts, rowid, name, oracle_text, type_line)
+                VALUES ('delete', OLD.rowid, OLD.name, OLD.oracle_text, OLD.type_line);
             END
         """)
 
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS cards_au AFTER UPDATE ON cards BEGIN
-                INSERT INTO cards_fts(cards_fts, rowid, id, name, oracle_text, type_line)
-                VALUES ('delete', OLD.rowid, OLD.id, OLD.name, OLD.oracle_text, OLD.type_line);
-                INSERT INTO cards_fts(rowid, id, name, oracle_text, type_line)
-                VALUES (NEW.rowid, NEW.id, NEW.name, NEW.oracle_text, NEW.type_line);
+                INSERT INTO cards_fts(cards_fts, rowid, name, oracle_text, type_line)
+                VALUES ('delete', OLD.rowid, OLD.name, OLD.oracle_text, OLD.type_line);
+                INSERT INTO cards_fts(rowid, name, oracle_text, type_line)
+                VALUES (NEW.rowid, NEW.name, NEW.oracle_text, NEW.type_line);
             END
         """)
 
@@ -365,6 +384,36 @@ class CardStore:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit context manager and close connection."""
         self.close()
+
+    # --- FTS5 query helpers ---
+
+    def _has_fts_filters(self, filters: dict[str, Any]) -> bool:
+        """Check if filters contain any FTS5-eligible positive filters."""
+        return any(key in filters for key in _FTS_FILTER_MAP)
+
+    def _build_fts_match_expr(self, filters: dict[str, Any]) -> str | None:
+        """Build a single FTS5 MATCH expression from eligible filters.
+
+        FTS5 allows only one MATCH per query, so all terms are combined
+        with AND into a single expression.
+
+        Returns:
+            FTS5 MATCH expression string, or None if no FTS filters
+        """
+        terms: list[str] = []
+
+        for filter_key, fts_column in _FTS_FILTER_MAP.items():
+            if filter_key not in filters:
+                continue
+
+            values = filters[filter_key]
+            values = values if isinstance(values, list) else [values]
+
+            for val in values:
+                escaped = _escape_fts5(val)
+                terms.append(f"{fts_column} : {escaped}")
+
+        return " AND ".join(terms) if terms else None
 
     def get_table_names(self) -> list[str]:
         """Get list of table names in database."""
@@ -858,12 +907,14 @@ class CardStore:
                 params.append(f'%"{c}"%')
 
     def _build_conditions_for_filters(
-        self, filters: dict[str, Any]
+        self, filters: dict[str, Any], use_fts: bool = False
     ) -> tuple[list[str], list[Any]]:
         """Convert a filters dict to SQL conditions and params.
 
         Args:
             filters: Dictionary of filter key-value pairs
+            use_fts: If True, skip LIKE conditions for FTS-handled filters
+                (oracle_text, type) since they'll be handled by FTS5 MATCH
 
         Returns:
             Tuple of (conditions list, params list)
@@ -917,13 +968,18 @@ class CardStore:
                 conditions.append("(mana_cost IS NULL OR mana_cost NOT LIKE ?)")
                 params.append(f"%{mana_value}%")
 
-        # Type filters
-        self._add_like_filter(filters, "type", "type_line", conditions, params)
-        self._add_like_filter(filters, "type_not", "type_line", conditions, params, negated=True)
+        # Type filters (positive handled by FTS5 when use_fts=True)
+        if not use_fts:
+            self._add_like_filter(filters, "type", "type_line", conditions, params)
+        # Qualify column with table name when FTS JOIN is active to avoid ambiguity
+        type_col = "cards.type_line" if use_fts else "type_line"
+        self._add_like_filter(filters, "type_not", type_col, conditions, params, negated=True)
 
-        # Oracle text filters
-        self._add_like_filter(filters, "oracle_text", "oracle_text", conditions, params)
-        self._add_like_filter(filters, "oracle_text_not", "oracle_text", conditions, params, negated=True)
+        # Oracle text filters (positive handled by FTS5 when use_fts=True)
+        if not use_fts:
+            self._add_like_filter(filters, "oracle_text", "oracle_text", conditions, params)
+        oracle_col = "cards.oracle_text" if use_fts else "oracle_text"
+        self._add_like_filter(filters, "oracle_text_not", oracle_col, conditions, params, negated=True)
 
         # Flavor text filters
         self._add_like_filter(filters, "flavor_text", "flavor_text", conditions, params)
@@ -1106,28 +1162,32 @@ class CardStore:
 
         return conditions, params
 
-    def _build_where_clause(self, parsed: ParsedQuery) -> tuple[str | None, list[Any]]:
+    def _build_where_clause(
+        self, parsed: ParsedQuery
+    ) -> tuple[str | None, list[Any], bool]:
         """Build WHERE clause and parameters from a ParsedQuery.
 
         Handles both simple AND queries and complex OR queries with groups.
+        Uses FTS5 MATCH for oracle_text and type filters when possible.
 
         Args:
             parsed: ParsedQuery object with filters
 
         Returns:
-            Tuple of (where_clause, params) where where_clause is None if no filters
+            Tuple of (where_clause, params, uses_fts) where uses_fts
+            indicates a JOIN on cards_fts is needed
         """
         # No filters
         if parsed.is_empty and not parsed.has_or_clause:
-            return None, []
+            return None, [], False
 
-        # Handle OR queries
+        # OR queries always use LIKE — FTS5 allows only one MATCH per
+        # query, so mixing MATCH across OR branches requires subqueries.
         if parsed.has_or_clause and parsed.or_groups:
             group_clauses = []
             all_params: list[Any] = []
 
             for group_filters in parsed.or_groups:
-                # Merge list of filter dicts into one
                 merged: dict[str, Any] = {}
                 for f in group_filters:
                     merged.update(f)
@@ -1138,18 +1198,29 @@ class CardStore:
                     all_params.extend(params)
 
             if group_clauses:
-                return " OR ".join(group_clauses), all_params
+                return " OR ".join(group_clauses), all_params, False
             else:
-                # No valid conditions - return impossible condition
-                return "1=0", []
+                return "1=0", [], False
 
-        # Standard AND query (no OR)
-        conditions, params = self._build_conditions_for_filters(parsed.filters)
+        # Standard AND query — use FTS5 when eligible filters are present
+        uses_fts = self._has_fts_filters(parsed.filters)
 
-        if conditions:
-            return " AND ".join(conditions), params
+        if uses_fts:
+            fts_match = self._build_fts_match_expr(parsed.filters)
+            conditions, params = self._build_conditions_for_filters(
+                parsed.filters, use_fts=True
+            )
+            if fts_match:
+                conditions.insert(0, "cards_fts MATCH ?")
+                params.insert(0, fts_match)
+            if conditions:
+                return " AND ".join(conditions), params, True
+            return None, [], False
         else:
-            return None, []
+            conditions, params = self._build_conditions_for_filters(parsed.filters)
+            if conditions:
+                return " AND ".join(conditions), params, False
+            return None, [], False
 
     def execute_query(
         self,
@@ -1159,6 +1230,9 @@ class CardStore:
     ) -> list[dict[str, Any]]:
         """Execute a parsed query.
 
+        Uses FTS5 JOIN for oracle_text/type filters (with BM25 relevance
+        ranking), and regular SQL with alphabetical ordering otherwise.
+
         Args:
             parsed: ParsedQuery object with filters
             limit: Maximum results to return
@@ -1167,13 +1241,23 @@ class CardStore:
         Returns:
             List of matching card dictionaries
         """
-        where_clause, params = self._build_where_clause(parsed)
+        where_clause, params, uses_fts = self._build_where_clause(parsed)
 
-        if where_clause:
-            query = f"SELECT * FROM cards WHERE {where_clause} LIMIT ? OFFSET ?"
+        if uses_fts and where_clause:
+            query = (
+                "SELECT cards.* FROM cards "
+                "JOIN cards_fts ON cards.rowid = cards_fts.rowid "
+                f"WHERE {where_clause} "
+                # FTS5 rank = BM25 score (negative; lower = more relevant)
+                "ORDER BY cards_fts.rank "
+                "LIMIT ? OFFSET ?"
+            )
+            params.extend([limit, offset])
+        elif where_clause:
+            query = f"SELECT * FROM cards WHERE {where_clause} ORDER BY name LIMIT ? OFFSET ?"
             params.extend([limit, offset])
         else:
-            query = "SELECT * FROM cards LIMIT ? OFFSET ?"
+            query = "SELECT * FROM cards ORDER BY name LIMIT ? OFFSET ?"
             params = [limit, offset]
 
         cursor = self._conn.cursor()
@@ -1189,9 +1273,15 @@ class CardStore:
         Returns:
             Total count of matching cards
         """
-        where_clause, params = self._build_where_clause(parsed)
+        where_clause, params, uses_fts = self._build_where_clause(parsed)
 
-        if where_clause:
+        if uses_fts and where_clause:
+            query = (
+                "SELECT COUNT(*) FROM cards "
+                "JOIN cards_fts ON cards.rowid = cards_fts.rowid "
+                f"WHERE {where_clause}"
+            )
+        elif where_clause:
             query = f"SELECT COUNT(*) FROM cards WHERE {where_clause}"
         else:
             query = "SELECT COUNT(*) FROM cards"
@@ -1218,9 +1308,15 @@ class CardStore:
             return self._row_to_dict(row) if row else None
 
         # Use shared WHERE clause builder for filtered queries
-        where_clause, params = self._build_where_clause(parsed)
+        where_clause, params, uses_fts = self._build_where_clause(parsed)
 
-        if where_clause:
+        if uses_fts and where_clause:
+            query = (
+                "SELECT cards.* FROM cards "
+                "JOIN cards_fts ON cards.rowid = cards_fts.rowid "
+                f"WHERE {where_clause} ORDER BY RANDOM() LIMIT 1"
+            )
+        elif where_clause:
             query = f"SELECT * FROM cards WHERE {where_clause} ORDER BY RANDOM() LIMIT 1"
         else:
             query = "SELECT * FROM cards ORDER BY RANDOM() LIMIT 1"

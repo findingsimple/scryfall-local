@@ -2636,3 +2636,328 @@ class TestUnicodeCardNames:
             assert card["name"] == "Lim-Dûl the Necromancer"
 
             store.close()
+
+
+class TestFTS5Search:
+    """Test FTS5 search integration."""
+
+    def test_oracle_text_search_uses_fts(self, sample_cards: list[dict[str, Any]]):
+        """Oracle text search should return correct results via FTS5."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(filters={"oracle_text": "flying"}, raw_query="o:flying")
+            results = store.execute_query(parsed, limit=100)
+
+            assert len(results) >= 1
+            assert all("flying" in c["oracle_text"].lower() for c in results)
+            store.close()
+
+    def test_type_search_uses_fts(self, sample_cards: list[dict[str, Any]]):
+        """Type search should return correct results via FTS5."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            results = store.execute_query(parsed, limit=100)
+
+            assert len(results) >= 1
+            assert all("Creature" in c["type_line"] for c in results)
+            store.close()
+
+    def test_fts_combined_with_non_fts_filters(self, sample_cards: list[dict[str, Any]]):
+        """Queries mixing FTS and non-FTS filters should work."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"type": "creature", "colors": {"value": ["R"], "operator": ":"}},
+                raw_query="t:creature c:red",
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            assert len(results) >= 1
+            for card in results:
+                assert "Creature" in card["type_line"]
+            store.close()
+
+    def test_fts_phrase_matching(self, sample_cards: list[dict[str, Any]]):
+        """Multi-word oracle text should use FTS5 phrase matching."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"oracle_text": "deals 3 damage"},
+                raw_query='o:"deals 3 damage"',
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            assert len(results) >= 1
+            assert all("deals 3 damage" in c["oracle_text"].lower() for c in results)
+            store.close()
+
+    def test_negated_oracle_text_uses_like_fallback(self, sample_cards: list[dict[str, Any]]):
+        """Negated oracle text should still work (falls back to LIKE)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"oracle_text_not": "damage"},
+                raw_query="-o:damage",
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            for card in results:
+                if card.get("oracle_text"):
+                    assert "damage" not in card["oracle_text"].lower()
+            store.close()
+
+    def test_non_fts_query_ordered_alphabetically(self, sample_cards: list[dict[str, Any]]):
+        """Non-FTS queries should return results ordered by name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"colors": {"value": ["R"], "operator": ":"}},
+                raw_query="c:red",
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            names = [c["name"] for c in results]
+            assert names == sorted(names)
+            store.close()
+
+    def test_fts_count_matches(self, sample_cards: list[dict[str, Any]]):
+        """count_matches should work with FTS5 filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            count = store.count_matches(parsed)
+
+            results = store.execute_query(parsed, limit=100)
+            assert count == len(results)
+            store.close()
+
+    def test_fts_random_card(self, sample_cards: list[dict[str, Any]]):
+        """get_random_card should work with FTS5 filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            card = store.get_random_card(parsed)
+
+            assert card is not None
+            assert "Creature" in card["type_line"]
+            store.close()
+
+    def test_fts_special_characters_escaped(self, sample_cards: list[dict[str, Any]]):
+        """FTS5 special characters in queries should not cause errors."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            # These contain FTS5 operators that need escaping
+            for query_text in ["NOT flying", "fire*", "draw AND discard", "a OR b"]:
+                parsed = ParsedQuery(
+                    filters={"oracle_text": query_text},
+                    raw_query=f"o:{query_text}",
+                )
+                # Should not raise — FTS5 operators are escaped
+                results = store.execute_query(parsed, limit=10)
+                assert isinstance(results, list)
+            store.close()
+
+    def test_multiple_oracle_text_values_anded(self, sample_cards: list[dict[str, Any]]):
+        """Multiple oracle text values should be ANDed together in FTS."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"oracle_text": ["flying", "vigilance"]},
+                raw_query="o:flying o:vigilance",
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            for card in results:
+                text = card["oracle_text"].lower()
+                assert "flying" in text
+                assert "vigilance" in text
+            store.close()
+
+    def test_or_group_with_type_uses_like_fallback(self, sample_cards: list[dict[str, Any]]):
+        """OR groups should still work (using LIKE, not FTS)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                or_groups=[
+                    [{"type": "creature"}],
+                    [{"type": "instant"}],
+                ],
+                has_or_clause=True,
+                raw_query="t:creature OR t:instant",
+            )
+            results = store.execute_query(parsed, limit=100)
+
+            assert len(results) >= 2
+            for card in results:
+                assert "Creature" in card["type_line"] or "Instant" in card["type_line"]
+            store.close()
+
+
+class TestFTS5PathVerification:
+    """Test that the FTS5 code path is actually taken (not silent LIKE fallback)."""
+
+    def test_build_where_clause_uses_fts_for_oracle_text(self):
+        """_build_where_clause should return uses_fts=True for oracle_text filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            parsed = ParsedQuery(filters={"oracle_text": "flying"}, raw_query="o:flying")
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is True
+            assert "cards_fts MATCH ?" in where
+            store.close()
+
+    def test_build_where_clause_uses_fts_for_type(self):
+        """_build_where_clause should return uses_fts=True for type filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            parsed = ParsedQuery(filters={"type": "creature"}, raw_query="t:creature")
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is True
+            assert "cards_fts MATCH ?" in where
+            store.close()
+
+    def test_build_where_clause_no_fts_for_negation(self):
+        """_build_where_clause should return uses_fts=False for negated oracle text."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            parsed = ParsedQuery(filters={"oracle_text_not": "flying"}, raw_query="-o:flying")
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is False
+            store.close()
+
+    def test_build_where_clause_no_fts_for_name(self):
+        """_build_where_clause should return uses_fts=False for name filters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            parsed = ParsedQuery(filters={"name_partial": "bolt"}, raw_query="bolt")
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is False
+            store.close()
+
+    def test_build_where_clause_no_fts_for_or_groups(self):
+        """_build_where_clause should return uses_fts=False for OR groups."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            parsed = ParsedQuery(
+                or_groups=[[{"type": "creature"}], [{"type": "instant"}]],
+                has_or_clause=True,
+                raw_query="t:creature OR t:instant",
+            )
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is False
+            store.close()
+
+    def test_build_fts_match_expr_single_oracle_text(self):
+        """Should build single-term FTS5 MATCH expression."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            result = store._build_fts_match_expr({"oracle_text": "flying"})
+            assert result == 'oracle_text : "flying"'
+            store.close()
+
+    def test_build_fts_match_expr_multiple_values(self):
+        """Should AND multiple values for the same filter."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            result = store._build_fts_match_expr({"oracle_text": ["flying", "vigilance"]})
+            assert result == 'oracle_text : "flying" AND oracle_text : "vigilance"'
+            store.close()
+
+    def test_build_fts_match_expr_type_and_oracle_text(self):
+        """Should combine type and oracle_text into single MATCH expression."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            result = store._build_fts_match_expr({"oracle_text": "flying", "type": "creature"})
+            assert "oracle_text :" in result
+            assert "type_line :" in result
+            assert " AND " in result
+            store.close()
+
+    def test_build_fts_match_expr_returns_none_for_no_fts_filters(self):
+        """Should return None when no FTS-eligible filters are present."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            result = store._build_fts_match_expr({"name_partial": "bolt"})
+            assert result is None
+            store.close()
+
+    def test_fts_positive_with_negated_same_field(self, sample_cards: list[dict[str, Any]]):
+        """o:flying -o:damage should use FTS for positive and LIKE for negation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            parsed = ParsedQuery(
+                filters={"oracle_text": "flying", "oracle_text_not": "damage"},
+                raw_query="o:flying -o:damage",
+            )
+
+            # Verify FTS path is taken (positive filter triggers it)
+            where, params, uses_fts = store._build_where_clause(parsed)
+            assert uses_fts is True
+
+            # Verify results are correct
+            results = store.execute_query(parsed, limit=100)
+            for card in results:
+                assert "flying" in card["oracle_text"].lower()
+                assert "damage" not in card["oracle_text"].lower()
+            store.close()
+
+
+class TestFTS5Escaping:
+    """Test the _escape_fts5 helper function."""
+
+    def test_escape_plain_text(self):
+        from src.card_store import _escape_fts5
+        assert _escape_fts5("flying") == '"flying"'
+
+    def test_escape_internal_quotes(self):
+        from src.card_store import _escape_fts5
+        assert _escape_fts5('enters "the" battlefield') == '"enters ""the"" battlefield"'
+
+    def test_escape_fts5_operators(self):
+        from src.card_store import _escape_fts5
+        assert _escape_fts5("NOT flying") == '"NOT flying"'
+
+    def test_escape_asterisk(self):
+        from src.card_store import _escape_fts5
+        assert _escape_fts5("fire*") == '"fire*"'
+
+    def test_escape_empty_string(self):
+        from src.card_store import _escape_fts5
+        assert _escape_fts5("") == '""'

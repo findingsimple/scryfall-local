@@ -121,6 +121,19 @@ Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `p
 
 The `raw_data` column stores the complete Scryfall JSON for any fields not yet promoted to columns.
 
+## Query Execution
+
+Queries use two paths depending on filter types:
+
+- **FTS5 path** — `oracle_text` (`o:`) and `type` (`t:`) positive filters use `JOIN cards_fts` with FTS5 MATCH. Results ranked by BM25 relevance (`ORDER BY rank`).
+- **SQL path** — All other filters (name, colors, cmc, rarity, etc.) use standard SQL with LIKE/exact match. Results ordered alphabetically (`ORDER BY name`).
+
+Fallbacks to SQL LIKE:
+- Negated text filters (`-o:flying`, `-t:creature`) — FTS5 can't do standalone NOT
+- OR groups (`t:creature OR t:instant`) — FTS5 allows only one MATCH per query
+
+Mixed queries (e.g., `o:flying c:blue cmc:3`) use the FTS5 JOIN for text filters and standard WHERE conditions for the rest, all in a single query.
+
 ## Context7 MCP Integration
 
 Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
