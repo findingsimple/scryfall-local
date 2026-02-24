@@ -384,7 +384,7 @@ class DataManager:
 
         # Fetch server info
         try:
-            info = await self.get_bulk_data_info(metadata.get("type", "all_cards"))
+            info = await self.get_bulk_data_info(metadata.get("type", "oracle_cards"))
             if not info:
                 return True
 

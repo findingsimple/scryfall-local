@@ -5,7 +5,7 @@ import pytest
 import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import respx
@@ -279,6 +279,31 @@ class TestDataManagerCache:
             async with DataManager(Path(tmpdir)) as manager:
                 is_stale = await manager.is_cache_stale()
                 assert is_stale
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_cache_stale_missing_type_defaults_to_oracle_cards(self):
+        """Metadata without 'type' key should default to oracle_cards."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Metadata with NO type key — simulates older version
+            metadata = {
+                "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": "2025-01-09T12:00:00.000+00:00",
+                "card_count": 100,
+            }
+            with open(Path(tmpdir) / "metadata.json", "w") as f:
+                json.dump(metadata, f)
+
+            async with DataManager(Path(tmpdir)) as manager:
+                with patch.object(
+                    manager, "get_bulk_data_info", wraps=manager.get_bulk_data_info
+                ) as spy:
+                    await manager.is_cache_stale()
+                    spy.assert_called_once_with("oracle_cards")
 
 
 class TestDataManagerPathSecurity:

@@ -45,7 +45,7 @@ def print_progress_bar(downloaded: int, total: int) -> None:
 
 
 async def download_data(
-    data_dir: Path, data_type: str = "all_cards", force: bool = False
+    data_dir: Path, data_type: str = "oracle_cards", force: bool = False
 ) -> None:
     """Download bulk data with progress bar."""
     manager = DataManager(data_dir)

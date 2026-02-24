@@ -454,7 +454,7 @@ class ScryfallServer:
             self._refresh_status = "downloading"
 
             # Download bulk data
-            file_path = await self._data_manager.download_bulk_data("all_cards")
+            file_path = await self._data_manager.download_bulk_data("oracle_cards")
 
             self._refresh_status = "importing"
 

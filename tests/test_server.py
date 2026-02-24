@@ -609,6 +609,7 @@ class TestServerBackgroundRefresh:
                 # Mock the data manager to:
                 # 1. Return stale=True so refresh proceeds
                 # 2. Return our test file path for download
+                mock_download = AsyncMock(return_value=bulk_data_path)
                 with patch.object(
                     server._data_manager,
                     "is_cache_stale",
@@ -616,7 +617,7 @@ class TestServerBackgroundRefresh:
                 ), patch.object(
                     server._data_manager,
                     "download_bulk_data",
-                    new=AsyncMock(return_value=bulk_data_path)
+                    new=mock_download
                 ):
                     # Trigger refresh
                     result = await server.call_tool("refresh_data", {})
@@ -632,6 +633,9 @@ class TestServerBackgroundRefresh:
                     # Check refresh completed successfully
                     assert server._refresh_status == "completed", \
                         f"Refresh failed with status: {server._refresh_status}"
+
+                # Verify refresh downloaded oracle_cards (not all_cards)
+                mock_download.assert_called_once_with("oracle_cards")
 
                 # Verify database now contains the test cards
                 search_result = await server.call_tool("search_cards", {"query": "New Test Card"})
@@ -658,6 +662,7 @@ class TestServerBackgroundRefresh:
                 # Mock the data manager to:
                 # 1. Return stale=True so refresh proceeds
                 # 2. Fail on download
+                mock_download = AsyncMock(side_effect=Exception("Network error: connection refused"))
                 with patch.object(
                     server._data_manager,
                     "is_cache_stale",
@@ -665,7 +670,7 @@ class TestServerBackgroundRefresh:
                 ), patch.object(
                     server._data_manager,
                     "download_bulk_data",
-                    new=AsyncMock(side_effect=Exception("Network error: connection refused"))
+                    new=mock_download
                 ):
                     # Trigger refresh
                     result = await server.call_tool("refresh_data", {})
@@ -682,6 +687,9 @@ class TestServerBackgroundRefresh:
                     assert server._refresh_status.startswith("error:"), \
                         f"Expected error status, got: {server._refresh_status}"
                     assert "Network error" in server._refresh_status
+
+                # Verify refresh attempted oracle_cards (not all_cards)
+                mock_download.assert_called_once_with("oracle_cards")
 
                 # Verify original data is still intact
                 status = await server.call_tool("data_status", {})
@@ -729,6 +737,7 @@ class TestServerBackgroundRefresh:
                 bolt = await server.call_tool("get_card", {"name": "Lightning Bolt"})
                 assert bolt["name"] == "Lightning Bolt"
 
+                mock_download = AsyncMock(return_value=bulk_data_path)
                 with patch.object(
                     server._data_manager,
                     "is_cache_stale",
@@ -736,7 +745,7 @@ class TestServerBackgroundRefresh:
                 ), patch.object(
                     server._data_manager,
                     "download_bulk_data",
-                    new=AsyncMock(return_value=bulk_data_path)
+                    new=mock_download
                 ):
                     result = await server.call_tool("refresh_data", {})
                     assert result["status"] == "downloading"
@@ -749,6 +758,9 @@ class TestServerBackgroundRefresh:
 
                     assert server._refresh_status == "completed", \
                         f"Refresh failed with status: {server._refresh_status}"
+
+                # Verify refresh downloaded oracle_cards (not all_cards)
+                mock_download.assert_called_once_with("oracle_cards")
 
                 # New data should be queryable
                 new_card = await server.call_tool("get_card", {"name": "Refreshed Card Alpha"})

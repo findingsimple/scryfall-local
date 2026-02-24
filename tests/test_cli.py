@@ -234,6 +234,38 @@ class TestDownloadData:
                     assert any("Unknown data type" in str(c) for c in calls)
 
 
+class TestDownloadDataDefaults:
+    """Test that download_data uses oracle_cards by default."""
+
+    @pytest.mark.asyncio
+    async def test_download_defaults_to_oracle_cards(self):
+        """Calling download_data() without data_type should use oracle_cards."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.cli.DataManager") as MockDataManager:
+                mock_manager = AsyncMock()
+                mock_manager.is_cache_stale = AsyncMock(return_value=True)
+                mock_manager.get_bulk_data_info = AsyncMock(return_value={
+                    "type": "oracle_cards",
+                    "size": 160_000_000,
+                    "download_uri": "https://data.scryfall.io/oracle-cards/oracle-cards.json",
+                    "updated_at": "2025-01-09T12:00:00.000+00:00",
+                })
+                mock_manager.download_bulk_data = AsyncMock(
+                    return_value=Path(tmpdir) / "cards.json"
+                )
+                mock_manager.update_card_count = MagicMock()
+                mock_manager.close = AsyncMock()
+                MockDataManager.return_value = mock_manager
+
+                with patch("builtins.print"), \
+                     patch("src.cli.import_to_temp_and_swap", return_value=100):
+                    await download_data(Path(tmpdir))
+
+                mock_manager.download_bulk_data.assert_called_once()
+                call_args = mock_manager.download_bulk_data.call_args
+                assert call_args[0][0] == "oracle_cards"
+
+
 class TestMain:
     """Test main CLI entry point."""
 
