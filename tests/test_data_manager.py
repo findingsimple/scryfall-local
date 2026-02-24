@@ -176,7 +176,7 @@ class TestDataManagerDownload:
             return_value=httpx.Response(
                 200,
                 content=json.dumps(sample_cards).encode(),
-                headers={"Content-Length": "100"},
+                headers={"Content-Length": str(len(json.dumps(sample_cards).encode()))},
             )
         )
 
@@ -372,6 +372,188 @@ class TestAtomicDownload:
                 # Mid-download: temp file exists, final does not
                 assert mid_download_state["temp_exists"] is True
                 assert mid_download_state["final_exists"] is False
+
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_rejects_truncated_response(self):
+        """Download with Content-Length but fewer bytes should raise ReadError."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers = {"Content-Length": "1000"}
+
+        async def short_stream(chunk_size=8192):
+            yield b"x" * 100
+
+        mock_response.aiter_bytes = short_stream
+        mock_response.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    if "all-cards" in url:
+                        return mock_response
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    with pytest.raises(httpx.ReadError, match="Incomplete download"):
+                        await manager.download_bulk_data("all_cards", max_retries=0)
+
+                # No temp or final file should remain
+                tmp_files = list(Path(tmpdir).glob("*.tmp"))
+                assert tmp_files == []
+                json_files = list(Path(tmpdir).glob("all-cards*.json"))
+                assert json_files == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_accepts_missing_content_length(self):
+        """Download without Content-Length header should succeed normally."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        respx.get("https://data.scryfall.io/all-cards/all-cards-20250109.json").mock(
+            return_value=httpx.Response(200, content=sample_data)
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                file_path = await manager.download_bulk_data("all_cards")
+
+                assert file_path.exists()
+                assert file_path.read_bytes() == sample_data
+
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_rejects_over_delivery(self):
+        """Server sending more bytes than Content-Length should raise ReadError."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers = {"Content-Length": "50"}
+
+        async def long_stream(chunk_size=8192):
+            yield b"x" * 200
+
+        mock_response.aiter_bytes = long_stream
+        mock_response.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    if "all-cards" in url:
+                        return mock_response
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    with pytest.raises(httpx.ReadError, match="Incomplete download"):
+                        await manager.download_bulk_data("all_cards", max_retries=0)
+
+                # No files should remain
+                tmp_files = list(Path(tmpdir).glob("*.tmp"))
+                assert tmp_files == []
+                json_files = list(Path(tmpdir).glob("all-cards*.json"))
+                assert json_files == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_accepts_content_length_zero(self):
+        """Explicit Content-Length: 0 should skip size check (treated as missing)."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers = {"Content-Length": "0"}
+
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+
+        async def normal_stream(chunk_size=8192):
+            yield sample_data
+
+        mock_response.aiter_bytes = normal_stream
+        mock_response.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    if "all-cards" in url:
+                        return mock_response
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    file_path = await manager.download_bulk_data("all_cards")
+
+                    assert file_path.exists()
+                    assert file_path.read_bytes() == sample_data
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_truncated_download_retries_and_succeeds(self):
+        """Truncated download should be retried and succeed on next attempt."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        call_count = 0
+
+        def make_mock_response(truncated: bool):
+            mock = MagicMock()
+            mock.raise_for_status = MagicMock()
+            mock.aclose = AsyncMock()
+            if truncated:
+                mock.headers = {"Content-Length": "1000"}
+
+                async def short_stream(chunk_size=8192):
+                    yield b"x" * 100
+
+                mock.aiter_bytes = short_stream
+            else:
+                mock.headers = {"Content-Length": str(len(sample_data))}
+
+                async def full_stream(chunk_size=8192):
+                    yield sample_data
+
+                mock.aiter_bytes = full_stream
+            return mock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    nonlocal call_count
+                    if "all-cards" in url:
+                        call_count += 1
+                        # First attempt truncated, second succeeds
+                        return make_mock_response(truncated=(call_count == 1))
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    file_path = await manager.download_bulk_data(
+                        "all_cards", max_retries=1
+                    )
+
+                    assert file_path.exists()
+                    assert file_path.read_bytes() == sample_data
+                    assert call_count == 2
 
 
 class TestDataManagerCache:

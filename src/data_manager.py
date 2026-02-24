@@ -301,6 +301,12 @@ class DataManager:
                             if progress_callback:
                                 progress_callback(downloaded, total_size)
 
+                    # Verify download completeness
+                    if total_size > 0 and downloaded != total_size:
+                        raise httpx.ReadError(
+                            f"Incomplete download: got {downloaded} bytes, expected {total_size}"
+                        )
+
                     # Download complete - atomically move to final path
                     temp_path.replace(output_path)
 
