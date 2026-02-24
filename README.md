@@ -124,6 +124,8 @@ python -m src.cli download   # Downloads JSON file
 python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
 ```
 
+> **Atomic import:** Cards are loaded into a temporary database, then swapped into place in a single operation. If import fails mid-way, the existing database is untouched.
+
 ## MCP Tools
 
 ### search_cards

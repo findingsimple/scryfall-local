@@ -1175,8 +1175,10 @@ class CardStore:
         if parsed.is_empty and not parsed.has_or_clause:
             return None, [], False
 
-        # OR queries always use LIKE — FTS5 allows only one MATCH per
-        # query, so mixing MATCH across OR branches requires subqueries.
+        # OR queries use LIKE fallback — FTS5 allows only one MATCH per
+        # query (per table), so OR branches can't each have their own MATCH.
+        # An alternative is UNION of per-branch FTS subqueries, but adds
+        # complexity for marginal gain (OR queries are uncommon in practice).
         if parsed.has_or_clause and parsed.or_groups:
             group_clauses = []
             all_params: list[Any] = []
