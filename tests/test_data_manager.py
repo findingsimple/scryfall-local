@@ -219,6 +219,161 @@ class TestDataManagerDownload:
                 assert len(progress_calls) >= 1
 
 
+class TestAtomicDownload:
+    """Test atomic download (temp-then-rename) behaviour."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_no_temp_file_after_success(self):
+        """After successful download, no .tmp file should remain."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        respx.get("https://data.scryfall.io/all-cards/all-cards-20250109.json").mock(
+            return_value=httpx.Response(
+                200,
+                content=sample_data,
+                headers={"Content-Length": str(len(sample_data))},
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                file_path = await manager.download_bulk_data("all_cards")
+
+                assert file_path.exists()
+                temp_path = file_path.with_suffix(".json.tmp")
+                assert not temp_path.exists()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_cleans_temp_on_mid_stream_failure(self):
+        """Mid-stream failure should clean up the partial temp file."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        # Build a mock response whose aiter_bytes yields one chunk then raises
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers = {"Content-Length": "10000"}
+
+        async def failing_stream(chunk_size=8192):
+            yield b"partial data"
+            raise httpx.ReadError("connection lost mid-stream")
+
+        mock_response.aiter_bytes = failing_stream
+        mock_response.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                # Patch only the download request — catalog fetch uses respx
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    if "all-cards" in url:
+                        return mock_response
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    with pytest.raises(httpx.ReadError):
+                        await manager.download_bulk_data("all_cards", max_retries=0)
+
+                # Partial temp file should be cleaned up
+                tmp_files = list(Path(tmpdir).glob("*.tmp"))
+                assert tmp_files == []
+                # Final path should never have been written
+                json_files = list(Path(tmpdir).glob("all-cards*.json"))
+                assert json_files == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_preserves_existing_file_on_failure(self):
+        """A failed re-download should not corrupt a previously downloaded file."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        # Mock response that fails mid-stream
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.headers = {"Content-Length": "10000"}
+
+        async def failing_stream(chunk_size=8192):
+            yield b"corrupt partial"
+            raise httpx.ReadError("connection lost")
+
+        mock_response.aiter_bytes = failing_stream
+        mock_response.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Pre-existing good file from a previous download
+            existing_file = Path(tmpdir) / "all-cards-20250109.json"
+            existing_file.write_text('[{"id":"good","name":"Good Card"}]')
+
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    if "all-cards" in url:
+                        return mock_response
+                    return await original_validated_get(url, **kwargs)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get):
+                    with pytest.raises(httpx.ReadError):
+                        await manager.download_bulk_data("all_cards", max_retries=0)
+
+                # Original file should be untouched
+                assert existing_file.exists()
+                data = json.loads(existing_file.read_text())
+                assert data[0]["name"] == "Good Card"
+
+                # No temp file left behind
+                tmp_files = list(Path(tmpdir).glob("*.tmp"))
+                assert tmp_files == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_download_final_path_not_written_until_complete(self):
+        """During download, data goes to temp path only — final path doesn't exist."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        respx.get("https://data.scryfall.io/all-cards/all-cards-20250109.json").mock(
+            return_value=httpx.Response(
+                200,
+                content=sample_data,
+                headers={"Content-Length": str(len(sample_data))},
+            )
+        )
+
+        mid_download_state = {"captured": False}
+
+        def progress_spy(downloaded: int, total: int):
+            """Capture filesystem state mid-download."""
+            if not mid_download_state["captured"]:
+                mid_download_state["captured"] = True
+                mid_download_state["final_exists"] = (
+                    Path(mid_download_state["tmpdir"]) / "all-cards-20250109.json"
+                ).exists()
+                mid_download_state["temp_exists"] = (
+                    Path(mid_download_state["tmpdir"]) / "all-cards-20250109.json.tmp"
+                ).exists()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mid_download_state["tmpdir"] = tmpdir
+            async with DataManager(Path(tmpdir)) as manager:
+                await manager.download_bulk_data(
+                    "all_cards", progress_callback=progress_spy
+                )
+
+                # Mid-download: temp file exists, final does not
+                assert mid_download_state["temp_exists"] is True
+                assert mid_download_state["final_exists"] is False
+
+
 class TestDataManagerCache:
     """Test cache freshness checking."""
 

@@ -261,6 +261,7 @@ class DataManager:
             filename = f"{data_type}.json"
 
         output_path = self.data_dir / filename
+        temp_path = output_path.with_suffix(".json.tmp")
 
         # Retry loop with exponential backoff
         last_error: Exception | None = None
@@ -276,6 +277,13 @@ class DataManager:
                 )
                 await asyncio.sleep(delay)
 
+            # Clean up any leftover temp file before (re-)downloading
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
             try:
                 # Download file with validated redirects
                 response = await self._validated_get(download_url, stream=True)
@@ -285,13 +293,16 @@ class DataManager:
                     total_size = int(response.headers.get("Content-Length", 0))
                     downloaded = 0
 
-                    with open(output_path, "wb") as f:
+                    with open(temp_path, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=8192):
                             f.write(chunk)
                             downloaded += len(chunk)
 
                             if progress_callback:
                                 progress_callback(downloaded, total_size)
+
+                    # Download complete - atomically move to final path
+                    temp_path.replace(output_path)
 
                     # Download successful - save metadata and return
                     if attempt > 0:
@@ -312,10 +323,10 @@ class DataManager:
 
             except (httpx.HTTPError, OSError) as e:
                 last_error = e
-                # Remove partial download on error
-                if output_path.exists():
+                # Remove partial temp download on error
+                if temp_path.exists():
                     try:
-                        output_path.unlink()
+                        temp_path.unlink()
                     except OSError:
                         pass
                 # Continue to next retry attempt
