@@ -2768,21 +2768,112 @@ class TestFTS5Search:
             store.close()
 
     def test_fts_special_characters_escaped(self, sample_cards: list[dict[str, Any]]):
-        """FTS5 special characters in queries should not cause errors."""
+        """FTS5 special characters in queries should be escaped and return correct results."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "cards.db"
             store = CardStore(db_path)
             store.insert_cards(sample_cards)
 
-            # These contain FTS5 operators that need escaping
-            for query_text in ["NOT flying", "fire*", "draw AND discard", "a OR b"]:
-                parsed = ParsedQuery(
-                    filters={"oracle_text": query_text},
-                    raw_query=f"o:{query_text}",
-                )
-                # Should not raise — FTS5 operators are escaped
-                results = store.execute_query(parsed, limit=10)
-                assert isinstance(results, list)
+            # "NOT flying" should search for the literal phrase, not negate "flying"
+            parsed = ParsedQuery(
+                filters={"oracle_text": "NOT flying"},
+                raw_query='o:"NOT flying"',
+            )
+            results = store.execute_query(parsed, limit=10)
+            # No card has the literal text "NOT flying", so results should be empty
+            assert results == []
+
+            # "fire*" should search for the literal "fire*", not use wildcard expansion
+            parsed = ParsedQuery(
+                filters={"oracle_text": "fire*"},
+                raw_query='o:"fire*"',
+            )
+            results = store.execute_query(parsed, limit=10)
+            # No card has "fire*" literally in its text
+            assert results == []
+
+            # "draw AND discard" should search literally, not boolean AND
+            parsed = ParsedQuery(
+                filters={"oracle_text": "draw AND discard"},
+                raw_query='o:"draw AND discard"',
+            )
+            results = store.execute_query(parsed, limit=10)
+            assert results == []
+
+            # "a OR b" should search literally, not boolean OR
+            parsed = ParsedQuery(
+                filters={"oracle_text": "a OR b"},
+                raw_query='o:"a OR b"',
+            )
+            results = store.execute_query(parsed, limit=10)
+            assert results == []
+            store.close()
+
+    def test_fts_relevance_ordering(self):
+        """FTS5 queries should use BM25 ranking, not alphabetical order."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            # Insert cards where only some match "trample" — BM25 needs
+            # non-matching documents for IDF to be meaningful
+            cards = [
+                {
+                    "id": "rel-1",
+                    "name": "Zzz No Match",
+                    "cmc": 1.0,
+                    "type_line": "Creature — Elf",
+                    "oracle_text": "Vigilance",
+                    "colors": ["G"],
+                    "color_identity": ["G"],
+                    "set": "tst",
+                    "rarity": "common",
+                },
+                {
+                    "id": "rel-2",
+                    "name": "Aaa No Match Either",
+                    "cmc": 2.0,
+                    "type_line": "Creature — Human",
+                    "oracle_text": "First strike",
+                    "colors": ["W"],
+                    "color_identity": ["W"],
+                    "set": "tst",
+                    "rarity": "common",
+                },
+                {
+                    "id": "rel-3",
+                    "name": "Zzz Trample Card",
+                    "cmc": 3.0,
+                    "type_line": "Creature — Beast",
+                    "oracle_text": "Trample",
+                    "colors": ["G"],
+                    "color_identity": ["G"],
+                    "set": "tst",
+                    "rarity": "common",
+                },
+                {
+                    "id": "rel-4",
+                    "name": "Aaa Trample Card",
+                    "cmc": 5.0,
+                    "type_line": "Creature — Wurm",
+                    "oracle_text": "Trample. This creature has trample as long as you control a Forest.",
+                    "colors": ["G"],
+                    "color_identity": ["G"],
+                    "set": "tst",
+                    "rarity": "rare",
+                },
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(filters={"oracle_text": "trample"}, raw_query="o:trample")
+            results = store.execute_query(parsed, limit=10)
+
+            assert len(results) == 2
+            names = [r["name"] for r in results]
+            assert set(names) == {"Aaa Trample Card", "Zzz Trample Card"}
+            # BM25 ranks by term density — shorter doc with "Trample" ranks higher.
+            # Alphabetical order would put "Aaa" first; BM25 puts "Zzz" first.
+            assert names[0] == "Zzz Trample Card"
             store.close()
 
     def test_multiple_oracle_text_values_anded(self, sample_cards: list[dict[str, Any]]):

@@ -152,6 +152,65 @@ class TestImportCardsStreaming:
             finally:
                 store.close()
 
+    def test_import_invalid_json_structure(self):
+        """Should return 0 cards when JSON is an object instead of array."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            json_file = tmpdir_path / "not_array.json"
+            with open(json_file, "w") as f:
+                f.write('{"cards": [{"id": "1"}]}')
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                # ijson.items("item") expects array items; object yields 0 cards
+                count = import_cards_streaming(json_file, store)
+                assert count == 0
+            finally:
+                store.close()
+
+    def test_import_empty_file_not_json(self):
+        """Should raise error on completely empty file."""
+        import ijson
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            json_file = tmpdir_path / "empty.json"
+            with open(json_file, "w") as f:
+                pass  # Empty file
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                with pytest.raises((ijson.JSONError, ijson.IncompleteJSONError)):
+                    import_cards_streaming(json_file, store)
+            finally:
+                store.close()
+
+    def test_import_binary_file_raises_error(self):
+        """Should raise error on binary/non-JSON file."""
+        import ijson
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            json_file = tmpdir_path / "binary.json"
+            with open(json_file, "wb") as f:
+                f.write(b"\x00\x01\x02\x03\xff\xfe")
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                with pytest.raises((ijson.JSONError, UnicodeDecodeError, ijson.IncompleteJSONError)):
+                    import_cards_streaming(json_file, store)
+            finally:
+                store.close()
+
     def test_import_corrupted_json(self):
         """Should raise error on corrupted JSON."""
         import ijson
@@ -169,6 +228,43 @@ class TestImportCardsStreaming:
             try:
                 with pytest.raises(ijson.JSONError):
                     import_cards_streaming(json_file, store)
+            finally:
+                store.close()
+
+    def test_import_partial_failure_mid_batch(self):
+        """Should commit first batch but fail on second batch error."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create 1500 cards — with batch_size=1000, that's 2 insert_cards calls
+            sample_cards = [
+                {"id": str(i), "name": f"Card {i}", "cmc": i % 5, "colors": []}
+                for i in range(1500)
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(sample_cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            call_count = 0
+            original_insert = store.insert_cards
+
+            def insert_fails_on_second_call(cards):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 2:
+                    raise RuntimeError("Simulated mid-batch failure")
+                return original_insert(cards)
+
+            try:
+                with patch.object(store, "insert_cards", side_effect=insert_fails_on_second_call):
+                    with pytest.raises(RuntimeError, match="Simulated mid-batch failure"):
+                        import_cards_streaming(json_file, store)
+
+                # First batch of 1000 was committed before the error
+                assert store.get_card_count() == 1000
             finally:
                 store.close()
 
