@@ -26,6 +26,10 @@ src/
 # Activate virtual environment
 source .venv/bin/activate
 
+# Install dependencies (uv preferred — uses lockfile for reproducible installs)
+uv sync --all-extras
+# Or with pip: pip install -e ".[dev]"
+
 # Run tests
 pytest -v
 

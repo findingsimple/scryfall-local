@@ -21,6 +21,9 @@ cd scryfall-local
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+
+# Or with uv (recommended — uses lockfile for reproducible installs)
+uv sync --all-extras
 ```
 
 ## Usage
