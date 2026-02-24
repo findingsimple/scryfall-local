@@ -1007,6 +1007,62 @@ class TestCardStoreColorOperators:
 
             store.close()
 
+    def test_color_less_than_single_color(self):
+        """c<r with single color excludes non-R colors but includes mono-R.
+
+        Note: With a single color, `<` behaves like `<=` because the
+        "at least one specified color must be missing" clause only applies
+        when len(colors) > 1. This matches current behaviour; a strict
+        subset interpretation (colorless only) would require a separate fix.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Sol Ring", "colors": [], "color_identity": []},
+                {"id": "2", "name": "Bolt", "colors": ["R"], "color_identity": ["R"]},
+                {"id": "3", "name": "Gruul", "colors": ["R", "G"], "color_identity": ["R", "G"]},
+                {"id": "4", "name": "Island", "colors": ["U"], "color_identity": ["U"]},
+            ]
+            store.insert_cards(cards)
+
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": "<", "value": ["R"]}},
+                raw_query="c<r",
+            )
+            results = store.execute_query(parsed)
+
+            names = [c["name"] for c in results]
+            assert "Sol Ring" in names
+            assert "Bolt" in names  # Included (behaves like <=r for single color)
+            assert "Gruul" not in names  # RG has non-R color
+            assert "Island" not in names  # U is not a subset of R
+
+            store.close()
+
+    def test_color_filter_rejects_sql_injection(self):
+        """Adversarial color values should not execute as SQL."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = CardStore(Path(tmpdir) / "cards.db")
+            cards = [
+                {"id": "1", "name": "Bolt", "colors": ["R"], "color_identity": ["R"]},
+            ]
+            store.insert_cards(cards)
+
+            # Hand-craft a ParsedQuery with a malicious color value
+            parsed = ParsedQuery(
+                filters={"colors": {"operator": ">", "value": ["R'; DROP TABLE cards;--"]}},
+                raw_query="c>injection",
+            )
+            # Should return no results, not execute injected SQL
+            results = store.execute_query(parsed)
+            assert results == []
+
+            # Verify cards table still exists and is intact
+            card = store.get_card_by_name("Bolt")
+            assert card is not None
+
+            store.close()
+
     def test_identity_greater_than_operator(self):
         """id>rg should find cards with RG identity plus at least one more."""
         with tempfile.TemporaryDirectory() as tmpdir:

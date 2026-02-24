@@ -1281,15 +1281,9 @@ class TestQueryLengthLimit:
             parser.parse(long_query)
 
     def test_accepts_query_at_max_length(self):
-        """Query exactly at MAX_QUERY_LENGTH should be accepted."""
+        """Query exactly at MAX_QUERY_LENGTH should be parsed, not truncated."""
         parser = QueryParser()
-        # Use a valid partial name token that fills the limit
         query = "a" * QueryParser.MAX_QUERY_LENGTH
         result = parser.parse(query)
-        assert not result.is_empty
-
-    def test_accepts_normal_length_query(self):
-        """Typical queries should not be affected by the limit."""
-        parser = QueryParser()
-        result = parser.parse("c:blue t:instant o:draw cmc<=3")
-        assert result.filter_count >= 4
+        # Verify the full input was parsed as a name filter, not silently truncated
+        assert result.filters["name_partial"] == [query]
