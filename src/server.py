@@ -351,21 +351,27 @@ class ScryfallServer:
         async with self._refresh_lock:
             store = self._get_store()
 
-            for name in names[:remaining]:
-                card = store.get_card_by_name(name)
-                if card:
-                    found.append(card)
-                else:
-                    not_found.append(name)
+            # Batch lookup by name
+            name_slice = names[:remaining]
+            if name_slice:
+                card_map = store.get_cards_by_names(name_slice)
+                for name in name_slice:
+                    if name in card_map:
+                        found.append(card_map[name])
+                    else:
+                        not_found.append(name)
 
-            remaining -= min(len(names), remaining)
+            remaining -= len(name_slice)
 
-            for card_id in ids[:remaining]:
-                card = store.get_card_by_id(card_id)
-                if card:
-                    found.append(card)
-                else:
-                    not_found.append(card_id)
+            # Batch lookup by ID
+            id_slice = ids[:remaining]
+            if id_slice:
+                card_map = store.get_cards_by_ids(id_slice)
+                for card_id in id_slice:
+                    if card_id in card_map:
+                        found.append(card_map[card_id])
+                    else:
+                        not_found.append(card_id)
 
         result: dict[str, Any] = {
             "found": found,

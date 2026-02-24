@@ -235,50 +235,6 @@ class CardStore:
         """Create database tables and indexes."""
         cursor = self._conn.cursor()
 
-        # Migration: Add columns if table exists but columns don't
-        cursor.execute("""
-            SELECT name FROM sqlite_master
-            WHERE type='table' AND name='cards'
-        """)
-        if cursor.fetchone():
-            cursor.execute("PRAGMA table_info(cards)")
-            columns = [row[1] for row in cursor.fetchall()]
-
-            # Define migrations: (column_name, json_path)
-            # Note: Column names are from a fixed allowlist, not user input
-            _MIGRATION_COLUMNS = frozenset({
-                "keywords", "artist", "released_at", "loyalty",
-                "flavor_text", "collector_number", "watermark", "produced_mana", "layout",
-                "produces_tokens"
-            })
-            migrations = [
-                ("keywords", "$.keywords"),
-                ("artist", "$.artist"),
-                ("released_at", "$.released_at"),
-                ("loyalty", "$.loyalty"),
-                ("flavor_text", "$.flavor_text"),
-                ("collector_number", "$.collector_number"),
-                ("watermark", "$.watermark"),
-                ("produced_mana", "$.produced_mana"),
-                ("layout", "$.layout"),
-                ("produces_tokens", None),  # Complex extraction, populated during insert
-            ]
-
-            for col_name, json_path in migrations:
-                # Safety check: only allow known column names
-                if col_name not in _MIGRATION_COLUMNS:
-                    continue
-                if col_name not in columns:
-                    cursor.execute(f"ALTER TABLE cards ADD COLUMN {col_name} TEXT")
-                    # Only populate from JSON if json_path is provided
-                    if json_path is not None:
-                        cursor.execute(f"""
-                            UPDATE cards
-                            SET {col_name} = json_extract(raw_data, '{json_path}')
-                            WHERE {col_name} IS NULL
-                        """)
-            self._conn.commit()
-
         # Main cards table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cards (
@@ -308,8 +264,7 @@ class CardStore:
                 produces_tokens TEXT,  -- JSON array of token names this card creates
                 image_uris TEXT,  -- JSON object
                 legalities TEXT,  -- JSON object
-                prices TEXT,  -- JSON object
-                raw_data TEXT  -- Full JSON for any other fields
+                prices TEXT  -- JSON object
             )
         """)
 
@@ -444,8 +399,8 @@ class CardStore:
             id, oracle_id, name, mana_cost, cmc, type_line, oracle_text,
             power, toughness, colors, color_identity, keywords, set_code, set_name,
             rarity, artist, released_at, loyalty, flavor_text, collector_number,
-            watermark, produced_mana, layout, produces_tokens, image_uris, legalities, prices, raw_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            watermark, produced_mana, layout, produces_tokens, image_uris, legalities, prices
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             oracle_id = excluded.oracle_id,
             name = excluded.name,
@@ -472,8 +427,7 @@ class CardStore:
             produces_tokens = excluded.produces_tokens,
             image_uris = excluded.image_uris,
             legalities = excluded.legalities,
-            prices = excluded.prices,
-            raw_data = excluded.raw_data
+            prices = excluded.prices
     """
 
     def _card_to_params(self, card: dict[str, Any]) -> tuple:
@@ -547,7 +501,6 @@ class CardStore:
             json.dumps(card.get("image_uris", {}), cls=DecimalEncoder),
             json.dumps(card.get("legalities", {}), cls=DecimalEncoder),
             json.dumps(card.get("prices", {}), cls=DecimalEncoder),
-            json.dumps(card, cls=DecimalEncoder),
         )
 
     def insert_card(self, card: dict[str, Any]) -> None:
@@ -600,8 +553,6 @@ class CardStore:
         # Rename set_code to set for API compatibility
         if "set_code" in card:
             card["set"] = card.pop("set_code")
-        # Remove raw_data from output (too verbose)
-        card.pop("raw_data", None)
         return card
 
     def get_card_by_id(self, card_id: str) -> dict[str, Any] | None:
@@ -617,6 +568,38 @@ class CardStore:
         cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
         row = cursor.fetchone()
         return self._row_to_dict(row) if row else None
+
+    def get_cards_by_ids(self, ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Get multiple cards by ID in a single query.
+
+        Args:
+            ids: List of Scryfall card IDs
+
+        Returns:
+            Dictionary mapping card ID to card dictionary
+        """
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        cursor = self._conn.cursor()
+        cursor.execute(f"SELECT * FROM cards WHERE id IN ({placeholders})", ids)
+        return {card["id"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
+
+    def get_cards_by_names(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """Get multiple cards by exact name in a single query.
+
+        Args:
+            names: List of exact card names
+
+        Returns:
+            Dictionary mapping card name to card dictionary
+        """
+        if not names:
+            return {}
+        placeholders = ", ".join("?" for _ in names)
+        cursor = self._conn.cursor()
+        cursor.execute(f"SELECT * FROM cards WHERE name IN ({placeholders})", names)
+        return {card["name"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
 
     def get_card_by_name(self, name: str) -> dict[str, Any] | None:
         """Get card by exact name.

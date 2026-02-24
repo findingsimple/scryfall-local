@@ -260,7 +260,7 @@ class TestServerGetCardsBatch:
 
     @pytest.mark.asyncio
     async def test_get_cards_batch_by_names(self, sample_cards: list[dict[str, Any]]):
-        """Should get multiple cards by name."""
+        """Should get multiple cards by name with correct data."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with ScryfallServer(Path(tmpdir)) as server:
                 server._init_db(sample_cards)
@@ -273,6 +273,9 @@ class TestServerGetCardsBatch:
                 assert "found" in result
                 assert "not_found" in result
                 assert len(result["found"]) == 2
+                found_names = [c["name"] for c in result["found"]]
+                assert "Lightning Bolt" in found_names
+                assert "Counterspell" in found_names
 
     @pytest.mark.asyncio
     async def test_get_cards_batch_partial_match(self, sample_cards: list[dict[str, Any]]):
@@ -321,6 +324,104 @@ class TestServerGetCardsBatch:
                 )
 
                 assert "truncated" not in result
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_by_ids(self, sample_cards: list[dict[str, Any]]):
+        """Should get multiple cards by ID."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                ids = [sample_cards[0]["id"], sample_cards[1]["id"]]
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"ids": ids},
+                )
+
+                assert len(result["found"]) == 2
+                found_names = [c["name"] for c in result["found"]]
+                assert sample_cards[0]["name"] in found_names
+                assert sample_cards[1]["name"] in found_names
+                assert len(result["not_found"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_by_ids_partial(self, sample_cards: list[dict[str, Any]]):
+        """Should report found and not found IDs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"ids": [sample_cards[0]["id"], "nonexistent-id"]},
+                )
+
+                assert len(result["found"]) == 1
+                assert result["found"][0]["name"] == sample_cards[0]["name"]
+                assert "nonexistent-id" in result["not_found"]
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_mixed_names_and_ids(self, sample_cards: list[dict[str, Any]]):
+        """Should handle both names and IDs in one request."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {
+                        "names": ["Lightning Bolt"],
+                        "ids": [sample_cards[1]["id"]],
+                    },
+                )
+
+                assert len(result["found"]) == 2
+                found_names = [c["name"] for c in result["found"]]
+                assert "Lightning Bolt" in found_names
+                assert sample_cards[1]["name"] in found_names
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_names_exhaust_budget(self, sample_cards: list[dict[str, Any]]):
+        """When names consume the full budget, IDs should be silently skipped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # 50 names fills the budget, IDs get none
+                names = [f"Card {i}" for i in range(50)]
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {
+                        "names": names,
+                        "ids": [sample_cards[0]["id"]],
+                    },
+                )
+
+                # All 50 names are not-found, the ID was never processed
+                assert len(result["not_found"]) == 50
+                assert sample_cards[0]["id"] not in [c.get("id") for c in result["found"]]
+                assert result.get("truncated") is True
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_truncation_actually_truncates(self, sample_cards: list[dict[str, Any]]):
+        """Cards beyond the batch limit should not appear in results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                # First 50 are fake, 51st is a real card that should be truncated
+                names = [f"Fake Card {i}" for i in range(50)] + ["Lightning Bolt"]
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"names": names},
+                )
+
+                assert result.get("truncated") is True
+                # Lightning Bolt was at position 51, should not be processed
+                found_names = [c["name"] for c in result["found"]]
+                assert "Lightning Bolt" not in found_names
+                assert "Lightning Bolt" not in result["not_found"]
 
 
 class TestServerRandomCard:

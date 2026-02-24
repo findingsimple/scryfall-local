@@ -1832,143 +1832,186 @@ class TestCardStoreConcurrentAccess:
             assert len(errors) == 0, f"Errors: {errors}"
 
 
-class TestCardStoreMigration:
-    """Test database schema migration."""
+class TestCardStoreNoRawData:
+    """Test that raw_data column is not present."""
 
-    def test_migration_adds_missing_columns(self):
-        """Should add missing columns when opening old database."""
-        import sqlite3
-
+    def test_raw_data_not_in_results(self, sample_cards: list[dict[str, Any]]):
+        """Card results should not contain a raw_data field."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "cards.db"
-
-            # Create an "old" database with minimal schema (missing new columns)
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE cards (
-                    id TEXT PRIMARY KEY,
-                    oracle_id TEXT,
-                    name TEXT NOT NULL,
-                    mana_cost TEXT,
-                    cmc REAL,
-                    type_line TEXT,
-                    oracle_text TEXT,
-                    power TEXT,
-                    toughness TEXT,
-                    colors TEXT,
-                    color_identity TEXT,
-                    set_code TEXT,
-                    set_name TEXT,
-                    rarity TEXT,
-                    image_uris TEXT,
-                    legalities TEXT,
-                    prices TEXT,
-                    raw_data TEXT
-                )
-            """)
-
-            # Insert a card with data in raw_data that should be migrated
-            raw_data = {
-                "keywords": ["Flying", "Vigilance"],
-                "artist": "Test Artist",
-                "released_at": "2024-01-01",
-                "loyalty": "4",
-                "flavor_text": "Test flavor",
-                "collector_number": "123",
-            }
-            cursor.execute(
-                "INSERT INTO cards (id, name, raw_data) VALUES (?, ?, ?)",
-                ("test-id", "Test Card", json.dumps(raw_data)),
-            )
-            conn.commit()
-            conn.close()
-
-            # Open with CardStore - should trigger migration
             store = CardStore(db_path)
+            store.insert_cards(sample_cards)
 
-            # Verify new columns exist and have data
-            card = store.get_card_by_id("test-id")
+            card = store.get_card_by_name("Lightning Bolt")
             assert card is not None
-            assert card.get("keywords") == ["Flying", "Vigilance"]
-            assert card.get("artist") == "Test Artist"
-            assert card.get("released_at") == "2024-01-01"
-            assert card.get("loyalty") == "4"
-            assert card.get("flavor_text") == "Test flavor"
-            assert card.get("collector_number") == "123"
+            assert "raw_data" not in card
 
             store.close()
 
-    def test_migration_preserves_existing_data(self, sample_cards: list[dict[str, Any]]):
-        """Migration should not affect databases that already have all columns."""
+    def test_raw_data_not_in_schema(self):
+        """Database schema should not include raw_data column."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            cursor = store._conn.cursor()
+            cursor.execute("PRAGMA table_info(cards)")
+            columns = [row[1] for row in cursor.fetchall()]
+            assert "raw_data" not in columns
+
+            store.close()
+
+    def test_reopen_preserves_data(self, sample_cards: list[dict[str, Any]]):
+        """Reopening database should preserve all card data including non-name fields."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "cards.db"
 
-            # Create database with full schema
             store = CardStore(db_path)
             store.insert_cards(sample_cards)
             original_count = store.get_card_count()
             store.close()
 
-            # Reopen - should not cause issues
             store = CardStore(db_path)
             assert store.get_card_count() == original_count
 
-            # Verify cards are intact
             for card_data in sample_cards:
                 card = store.get_card_by_id(card_data["id"])
                 assert card is not None
                 assert card["name"] == card_data["name"]
+                # Verify non-name fields survive without raw_data fallback
+                if card_data.get("oracle_text"):
+                    assert card["oracle_text"] == card_data["oracle_text"]
+                if card_data.get("colors"):
+                    assert card["colors"] == card_data["colors"]
 
             store.close()
 
-    def test_migration_handles_null_raw_data(self):
-        """Migration should handle cards with NULL raw_data gracefully."""
-        import sqlite3
 
+class TestCardStoreBatchLookup:
+    """Test batch lookup methods."""
+
+    def test_get_cards_by_names(self, sample_cards: list[dict[str, Any]]):
+        """Should return matching cards keyed by name."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "cards.db"
-
-            # Create old database with NULL raw_data
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE cards (
-                    id TEXT PRIMARY KEY,
-                    oracle_id TEXT,
-                    name TEXT NOT NULL,
-                    mana_cost TEXT,
-                    cmc REAL,
-                    type_line TEXT,
-                    oracle_text TEXT,
-                    power TEXT,
-                    toughness TEXT,
-                    colors TEXT,
-                    color_identity TEXT,
-                    set_code TEXT,
-                    set_name TEXT,
-                    rarity TEXT,
-                    image_uris TEXT,
-                    legalities TEXT,
-                    prices TEXT,
-                    raw_data TEXT
-                )
-            """)
-            cursor.execute(
-                "INSERT INTO cards (id, name, raw_data) VALUES (?, ?, ?)",
-                ("test-id", "Test Card", None),
-            )
-            conn.commit()
-            conn.close()
-
-            # Should not crash when opening
             store = CardStore(db_path)
-            card = store.get_card_by_id("test-id")
-            assert card is not None
-            assert card["name"] == "Test Card"
-            # New columns should be None
-            assert card.get("keywords") is None
-            assert card.get("artist") is None
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_names(["Lightning Bolt", "Counterspell"])
+            assert len(result) == 2
+            assert "Lightning Bolt" in result
+            assert "Counterspell" in result
+            assert result["Lightning Bolt"]["name"] == "Lightning Bolt"
+
+            store.close()
+
+    def test_get_cards_by_names_partial_match(self, sample_cards: list[dict[str, Any]]):
+        """Should only return cards that exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_names(["Lightning Bolt", "Nonexistent Card"])
+            assert len(result) == 1
+            assert "Lightning Bolt" in result
+            assert "Nonexistent Card" not in result
+
+            store.close()
+
+    def test_get_cards_by_names_empty(self):
+        """Should return empty dict for empty input."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            result = store.get_cards_by_names([])
+            assert result == {}
+
+            store.close()
+
+    def test_get_cards_by_names_returns_complete_card(self, sample_cards: list[dict[str, Any]]):
+        """Returned cards should have full structure with parsed JSON fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_names(["Lightning Bolt"])
+            card = result["Lightning Bolt"]
+            assert card["name"] == "Lightning Bolt"
+            assert card["oracle_text"] is not None
+            assert isinstance(card["colors"], list)
+            # set_code should be renamed to set
+            assert "set" in card
+            assert "set_code" not in card
+
+            store.close()
+
+    def test_get_cards_by_names_deduplicates(self, sample_cards: list[dict[str, Any]]):
+        """Duplicate names in input should produce one entry in result dict."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_names(["Lightning Bolt", "Lightning Bolt"])
+            assert len(result) == 1
+            assert "Lightning Bolt" in result
+
+            store.close()
+
+    def test_get_cards_by_ids(self, sample_cards: list[dict[str, Any]]):
+        """Should return matching cards keyed by ID with correct data."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            ids = [sample_cards[0]["id"], sample_cards[1]["id"]]
+            result = store.get_cards_by_ids(ids)
+            assert len(result) == 2
+            assert sample_cards[0]["id"] in result
+            assert sample_cards[1]["id"] in result
+            # Verify returned values are actual card data
+            assert result[sample_cards[0]["id"]]["name"] == sample_cards[0]["name"]
+
+            store.close()
+
+    def test_get_cards_by_ids_partial_match(self, sample_cards: list[dict[str, Any]]):
+        """Should return only found cards when mixing valid and invalid IDs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_ids([sample_cards[0]["id"], "nonexistent-id"])
+            assert len(result) == 1
+            assert sample_cards[0]["id"] in result
+            assert "nonexistent-id" not in result
+
+            store.close()
+
+    def test_get_cards_by_ids_empty(self):
+        """Should return empty dict for empty input."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+
+            result = store.get_cards_by_ids([])
+            assert result == {}
+
+            store.close()
+
+    def test_get_cards_by_ids_not_found(self, sample_cards: list[dict[str, Any]]):
+        """Should omit IDs that don't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_ids(["nonexistent-id"])
+            assert len(result) == 0
 
             store.close()
 
