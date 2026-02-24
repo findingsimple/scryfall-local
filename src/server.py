@@ -19,7 +19,7 @@ import mcp.server.stdio
 from src import __version__
 from src.card_store import CardStore
 from src.data_manager import DataManager
-from src.import_utils import import_cards_streaming
+from src.import_utils import import_to_temp_and_swap
 from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
 
 # Server name constant - used in multiple places
@@ -59,7 +59,7 @@ class ScryfallServer:
         self._data_manager = DataManager(data_dir)
         self._refresh_task: asyncio.Task | None = None
         self._refresh_status: str = "idle"
-        self._refresh_lock = asyncio.Lock()  # Prevents queries during refresh
+        self._refresh_lock = asyncio.Lock()  # Serializes store access during swap
 
     def _get_store(self) -> CardStore:
         """Get or create card store."""
@@ -446,21 +446,7 @@ class ScryfallServer:
         Raises:
             ImportError: If ijson is not installed (required for streaming JSON parsing)
         """
-        # Note: Store connection closing and database deletion is handled by
-        # _do_refresh() in the main thread BEFORE calling this method.
-        # This is necessary because SQLite connections can only be used in the
-        # thread where they were created.
-
-        # Create a LOCAL store connection for this thread - do NOT use _get_store()
-        # which would set self._store and cause threading issues when the main
-        # thread later tries to use it.
-        store = CardStore(self.db_path)
-
-        try:
-            return import_cards_streaming(file_path, store)
-        finally:
-            # Close the worker thread's connection
-            store.close()
+        return import_to_temp_and_swap(file_path, self.db_path)
 
     async def _do_refresh(self) -> None:
         """Perform the actual download and import (runs in background)."""
@@ -472,23 +458,17 @@ class ScryfallServer:
 
             self._refresh_status = "importing"
 
-            # Acquire lock to prevent queries during database replacement
+            # Import into temp DB and atomically swap into place.
+            # Runs outside the lock so queries continue against the old DB.
+            card_count = await asyncio.to_thread(
+                self._import_cards_blocking, file_path
+            )
+
+            # Brief lock: close stale store so next query reopens the new DB
             async with self._refresh_lock:
-                # Close existing store connection in THIS thread (main/async thread)
-                # before running import in worker thread. SQLite connections can only
-                # be used in the thread where they were created.
                 if self._store is not None:
                     self._store.close()
                     self._store = None
-
-                # Remove old database
-                if self.db_path.exists():
-                    self.db_path.unlink()
-
-                # Run blocking I/O in thread pool to avoid blocking event loop
-                card_count = await asyncio.to_thread(
-                    self._import_cards_blocking, file_path
-                )
 
             # Update metadata with card count
             self._data_manager.update_card_count(card_count)

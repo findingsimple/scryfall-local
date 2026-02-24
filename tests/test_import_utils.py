@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.import_utils import import_cards_streaming
+from unittest.mock import patch
+
+from src.import_utils import import_cards_streaming, import_to_temp_and_swap
 from src.card_store import CardStore
 
 
@@ -190,4 +192,212 @@ class TestImportCardsStreaming:
             card = store.get_card_by_name("Test")
             assert card is not None
 
-            store.close()
+
+class TestImportToTempAndSwap:
+    """Test atomic temp-database-then-swap import."""
+
+    def _make_json(self, tmpdir: Path, cards: list[dict]) -> Path:
+        """Helper to create a JSON file with card data."""
+        json_file = tmpdir / "cards.json"
+        with open(json_file, "w") as f:
+            json.dump(cards, f)
+        return json_file
+
+    def _sample_cards(self, count: int = 3) -> list[dict]:
+        """Helper to create sample card data."""
+        return [
+            {"id": str(i), "name": f"Card {i}", "cmc": i, "colors": []}
+            for i in range(count)
+        ]
+
+    def test_basic_import(self):
+        """Should import cards and create database at target path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            json_file = self._make_json(tmpdir_path, self._sample_cards(3))
+            db_path = tmpdir_path / "cards.db"
+
+            count = import_to_temp_and_swap(json_file, db_path)
+
+            assert count == 3
+            assert db_path.exists()
+            with CardStore(db_path) as store:
+                assert store.get_card_count() == 3
+
+    def test_no_temp_files_after_success(self):
+        """Should not leave temp files after successful import."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            json_file = self._make_json(tmpdir_path, self._sample_cards())
+            db_path = tmpdir_path / "cards.db"
+
+            import_to_temp_and_swap(json_file, db_path)
+
+            assert not db_path.with_suffix(".db.tmp").exists()
+            assert not Path(str(db_path) + "-wal").exists()
+            assert not Path(str(db_path) + "-shm").exists()
+
+    def test_old_db_preserved_on_import_failure(self):
+        """Should preserve old database when import fails."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+
+            # Create an existing database with known data
+            old_json = self._make_json(tmpdir_path, [
+                {"id": "old-1", "name": "Old Card", "cmc": 1, "colors": []},
+            ])
+            import_to_temp_and_swap(old_json, db_path)
+            assert db_path.exists()
+
+            # Now try to import with a failure mid-way
+            json_file = self._make_json(tmpdir_path, self._sample_cards(5))
+
+            with patch(
+                "src.import_utils.import_cards_streaming",
+                side_effect=RuntimeError("Simulated import failure"),
+            ):
+                with pytest.raises(RuntimeError, match="Simulated import failure"):
+                    import_to_temp_and_swap(json_file, db_path)
+
+            # Old database should still be intact
+            assert db_path.exists()
+            with CardStore(db_path) as store:
+                assert store.get_card_count() == 1
+                card = store.get_card_by_name("Old Card")
+                assert card is not None
+
+    def test_temp_files_cleaned_up_on_failure(self):
+        """Should clean up temp files when import fails."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+            json_file = self._make_json(tmpdir_path, self._sample_cards())
+
+            with patch(
+                "src.import_utils.import_cards_streaming",
+                side_effect=RuntimeError("Simulated failure"),
+            ):
+                with pytest.raises(RuntimeError):
+                    import_to_temp_and_swap(json_file, db_path)
+
+            assert not db_path.with_suffix(".db.tmp").exists()
+            assert not Path(str(db_path.with_suffix(".db.tmp")) + "-wal").exists()
+            assert not Path(str(db_path.with_suffix(".db.tmp")) + "-shm").exists()
+
+    def test_leftover_temp_files_cleaned_before_import(self):
+        """Should clean up leftover temp files from a previous failed run."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+            json_file = self._make_json(tmpdir_path, self._sample_cards())
+
+            # Create leftover temp files
+            temp_path = db_path.with_suffix(".db.tmp")
+            temp_path.write_text("leftover")
+
+            count = import_to_temp_and_swap(json_file, db_path)
+
+            assert count == 3
+            assert not temp_path.exists()
+
+    def test_replaces_existing_database(self):
+        """Should replace existing database with new data."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+
+            # First import
+            old_json = self._make_json(tmpdir_path, [
+                {"id": "old-1", "name": "Old Card", "cmc": 1, "colors": []},
+            ])
+            import_to_temp_and_swap(old_json, db_path)
+
+            # Second import with different data
+            new_json = self._make_json(tmpdir_path, [
+                {"id": "new-1", "name": "New Card A", "cmc": 2, "colors": ["R"]},
+                {"id": "new-2", "name": "New Card B", "cmc": 3, "colors": ["U"]},
+            ])
+            count = import_to_temp_and_swap(new_json, db_path)
+
+            assert count == 2
+            with CardStore(db_path) as store:
+                assert store.get_card_count() == 2
+                assert store.get_card_by_name("Old Card") is None
+                assert store.get_card_by_name("New Card A") is not None
+
+    def test_progress_callback(self):
+        """Should pass progress callback through to streaming import."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            json_file = self._make_json(tmpdir_path, self._sample_cards(5))
+            db_path = tmpdir_path / "cards.db"
+
+            progress_calls = []
+            count = import_to_temp_and_swap(
+                json_file, db_path,
+                progress_callback=lambda n: progress_calls.append(n),
+            )
+
+            assert count == 5
+            assert len(progress_calls) >= 1
+            assert progress_calls[-1] == 5
+
+    def test_checkpoint_failure_preserves_old_db(self):
+        """Should preserve old database and clean up temp if checkpoint fails."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+
+            # Create an existing database
+            old_json = self._make_json(tmpdir_path, [
+                {"id": "old-1", "name": "Old Card", "cmc": 1, "colors": []},
+            ])
+            import_to_temp_and_swap(old_json, db_path)
+
+            # Now try import where checkpoint fails
+            new_json = self._make_json(tmpdir_path, self._sample_cards(5))
+
+            with patch.object(
+                CardStore, "checkpoint",
+                side_effect=RuntimeError("Simulated checkpoint failure"),
+            ):
+                with pytest.raises(RuntimeError, match="Simulated checkpoint failure"):
+                    import_to_temp_and_swap(new_json, db_path)
+
+            # Old database should be intact
+            assert db_path.exists()
+            with CardStore(db_path) as store:
+                assert store.get_card_count() == 1
+                assert store.get_card_by_name("Old Card") is not None
+
+            # No temp files left behind
+            assert not db_path.with_suffix(".db.tmp").exists()
+
+    def test_old_wal_shm_files_cleaned_after_swap(self):
+        """Should clean up pre-existing WAL/SHM companion files after swap."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            db_path = tmpdir_path / "cards.db"
+
+            # Create initial database
+            json_file = self._make_json(tmpdir_path, self._sample_cards(2))
+            import_to_temp_and_swap(json_file, db_path)
+
+            # Simulate leftover WAL/SHM files from old database
+            wal_path = Path(str(db_path) + "-wal")
+            shm_path = Path(str(db_path) + "-shm")
+            wal_path.write_text("stale wal data")
+            shm_path.write_text("stale shm data")
+
+            # Run a new import
+            new_json = self._make_json(tmpdir_path, self._sample_cards(3))
+            count = import_to_temp_and_swap(new_json, db_path)
+
+            assert count == 3
+            assert not wal_path.exists()
+            assert not shm_path.exists()
+
+            # New database should be readable
+            with CardStore(db_path) as store:
+                assert store.get_card_count() == 3

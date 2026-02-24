@@ -16,7 +16,8 @@ src/
 ├── cli.py           # CLI for download/import/status
 ├── card_store.py    # SQLite storage with FTS5
 ├── query_parser.py  # Scryfall syntax parser
-└── data_manager.py  # Bulk data download/caching
+├── data_manager.py  # Bulk data download/caching
+└── import_utils.py  # Streaming import with atomic DB swap
 ```
 
 ## Key Commands
@@ -63,6 +64,7 @@ Tests are written TDD-style with pytest:
 - `tests/test_data_manager.py` - Download/caching
 - `tests/test_server.py` - MCP server tools
 - `tests/test_cli.py` - CLI commands
+- `tests/test_import_utils.py` - Streaming import and atomic DB swap
 
 ```bash
 pytest -v                           # Run all tests

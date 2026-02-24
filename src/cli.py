@@ -6,8 +6,7 @@ import sys
 from pathlib import Path
 
 from src.data_manager import DataManager
-from src.card_store import CardStore
-from src.import_utils import import_cards_streaming
+from src.import_utils import import_to_temp_and_swap
 
 
 def format_size(bytes_size: int) -> str:
@@ -87,7 +86,7 @@ async def download_data(
         print()  # New line after progress bar
         print(f"Downloaded to: {file_path}")
 
-        # Import into database using streaming parser
+        # Import into database using atomic swap
         print()
         print("Importing cards into database...")
 
@@ -97,8 +96,9 @@ async def download_data(
             sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
-        with CardStore(db_path) as store:
-            total_cards = import_cards_streaming(file_path, store, progress_callback=import_progress)
+        total_cards = import_to_temp_and_swap(
+            file_path, db_path, progress_callback=import_progress
+        )
 
         print()
         print(f"Import complete! {total_cards:,} cards imported.")
@@ -169,13 +169,8 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
         print(f"  File size: {format_size(json_file.stat().st_size)}")
         print()
 
-        # Import into database
+        # Import into database using atomic swap
         db_path = data_dir / "cards.db"
-
-        # Remove old database if exists
-        if db_path.exists():
-            print("Removing old database...")
-            db_path.unlink()
 
         print("Importing cards using streaming parser...")
 
@@ -183,9 +178,9 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
             sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
-        # Use context manager to ensure store is closed even on error
-        with CardStore(db_path) as store:
-            total_cards = import_cards_streaming(json_file, store, progress_callback=import_progress)
+        total_cards = import_to_temp_and_swap(
+            json_file, db_path, progress_callback=import_progress
+        )
 
         print()
         print()

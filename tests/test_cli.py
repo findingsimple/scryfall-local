@@ -317,7 +317,7 @@ class TestStreamingImport:
 
     def test_import_cards_streaming_basic(self):
         """Should import cards using streaming parser."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -344,7 +344,7 @@ class TestStreamingImport:
 
     def test_import_cards_streaming_with_progress(self):
         """Should call progress callback during import."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -380,7 +380,7 @@ class TestStreamingImport:
 
     def test_import_cards_streaming_empty_file(self):
         """Should handle empty JSON array."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -406,7 +406,7 @@ class TestStreamingImportErrors:
 
     def test_import_corrupted_json_raises_error(self):
         """Should raise error on corrupted JSON."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
         import ijson
 
@@ -428,7 +428,7 @@ class TestStreamingImportErrors:
 
     def test_import_invalid_json_structure_raises_error(self):
         """Should raise error when JSON is not an array."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -450,7 +450,7 @@ class TestStreamingImportErrors:
 
     def test_import_file_not_found_raises_error(self):
         """Should raise FileNotFoundError for missing file."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -467,7 +467,7 @@ class TestStreamingImportErrors:
 
     def test_import_partial_success_on_bad_card(self):
         """Should import valid cards even if some are malformed."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -500,7 +500,7 @@ class TestStreamingImportErrors:
 
     def test_import_empty_file_not_json(self):
         """Should handle completely empty file."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
         import ijson
 
@@ -522,7 +522,7 @@ class TestStreamingImportErrors:
 
     def test_import_binary_file_raises_error(self):
         """Should raise error on binary/non-JSON file."""
-        from src.cli import import_cards_streaming
+        from src.import_utils import import_cards_streaming
         from src.card_store import CardStore
         import ijson
 

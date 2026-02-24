@@ -240,7 +240,8 @@ scryfall-local/
 │   ├── server.py          # MCP server (low-level Server class)
 │   ├── data_manager.py    # Download/cache bulk data
 │   ├── query_parser.py    # Scryfall syntax parser
-│   └── card_store.py      # Card storage (SQLite + FTS5)
+│   ├── card_store.py      # Card storage (SQLite + FTS5)
+│   └── import_utils.py    # Streaming import with atomic DB swap
 ├── tests/                  # Unit and integration tests
 ├── data/                   # Cached bulk data (gitignored)
 └── pyproject.toml

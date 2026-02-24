@@ -341,6 +341,19 @@ class CardStore:
 
         self._conn.commit()
 
+    def checkpoint(self) -> None:
+        """Flush WAL journal into the main database file.
+
+        Writes all WAL content into the main .db file and truncates the
+        -wal file to zero bytes. The -wal and -shm files remain on disk
+        (empty); the caller is responsible for deleting them if a fully
+        self-contained single file is needed.
+
+        Assumes exclusive access -- if other connections are reading, the
+        checkpoint may silently fall back to a partial flush.
+        """
+        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def close(self) -> None:
         """Close database connection."""
         self._conn.close()

@@ -689,3 +689,71 @@ class TestServerBackgroundRefresh:
 
                 bolt = await server.call_tool("get_card", {"name": "Lightning Bolt"})
                 assert bolt["name"] == "Lightning Bolt"
+
+    @pytest.mark.asyncio
+    async def test_refresh_integration_replaces_existing_data(self, sample_cards: list[dict[str, Any]]):
+        """Integration test: refresh replaces pre-existing data with new data."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create new bulk data with different cards
+            new_cards = [
+                {
+                    "id": "refreshed-1",
+                    "oracle_id": "refreshed-oracle-1",
+                    "name": "Refreshed Card Alpha",
+                    "mana_cost": "{3}{B}",
+                    "cmc": 4.0,
+                    "type_line": "Creature — Zombie",
+                    "oracle_text": "Menace",
+                    "colors": ["B"],
+                    "color_identity": ["B"],
+                    "set": "tst",
+                    "set_name": "Test Set",
+                    "rarity": "rare",
+                    "image_uris": {},
+                    "legalities": {"commander": "legal"},
+                    "prices": {},
+                },
+            ]
+
+            bulk_data_path = tmpdir_path / "refreshed_bulk.json"
+            with open(bulk_data_path, "w") as f:
+                json.dump(new_cards, f)
+
+            with ScryfallServer(tmpdir_path) as server:
+                # Pre-populate with original sample cards
+                server._init_db(sample_cards)
+
+                # Verify original data is present
+                bolt = await server.call_tool("get_card", {"name": "Lightning Bolt"})
+                assert bolt["name"] == "Lightning Bolt"
+
+                with patch.object(
+                    server._data_manager,
+                    "is_cache_stale",
+                    new=AsyncMock(return_value=True)
+                ), patch.object(
+                    server._data_manager,
+                    "download_bulk_data",
+                    new=AsyncMock(return_value=bulk_data_path)
+                ):
+                    result = await server.call_tool("refresh_data", {})
+                    assert result["status"] == "downloading"
+
+                    for _ in range(50):
+                        await asyncio.sleep(0.1)
+                        if server._refresh_status in ("completed", "idle") or \
+                           server._refresh_status.startswith("error:"):
+                            break
+
+                    assert server._refresh_status == "completed", \
+                        f"Refresh failed with status: {server._refresh_status}"
+
+                # New data should be queryable
+                new_card = await server.call_tool("get_card", {"name": "Refreshed Card Alpha"})
+                assert new_card["name"] == "Refreshed Card Alpha"
+
+                # Old data should be gone
+                old_card = await server.call_tool("get_card", {"name": "Lightning Bolt"})
+                assert "error" in old_card
