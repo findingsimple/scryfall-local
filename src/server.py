@@ -6,6 +6,7 @@ Scryfall bulk data. Uses the low-level MCP Server class for educational purposes
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,8 @@ from src.card_store import CardStore
 from src.data_manager import DataManager
 from src.import_utils import import_to_temp_and_swap
 from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
+
+logger = logging.getLogger(__name__)
 
 # Server name constant - used in multiple places
 SERVER_NAME = "scryfall-local"
@@ -440,14 +443,14 @@ class ScryfallServer:
 
         return result
 
-    def _import_cards_blocking(self, file_path: Path) -> int:
+    def _import_cards_blocking(self, file_path: Path) -> tuple[int, int]:
         """Import cards from JSON file (blocking I/O, runs in thread).
 
         Args:
             file_path: Path to the JSON file
 
         Returns:
-            Number of cards imported
+            Tuple of (cards_imported, cards_skipped)
 
         Raises:
             ImportError: If ijson is not installed (required for streaming JSON parsing)
@@ -466,9 +469,14 @@ class ScryfallServer:
 
             # Import into temp DB and atomically swap into place.
             # Runs outside the lock so queries continue against the old DB.
-            card_count = await asyncio.to_thread(
+            card_count, skipped = await asyncio.to_thread(
                 self._import_cards_blocking, file_path
             )
+
+            if skipped:
+                logger.warning(
+                    "Refresh skipped %d malformed cards", skipped
+                )
 
             # Brief lock: close stale store so next query reopens the new DB
             async with self._refresh_lock:

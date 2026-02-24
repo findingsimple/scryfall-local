@@ -6,6 +6,7 @@ Implements security measures for URL validation and path traversal prevention.
 
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -269,10 +270,12 @@ class DataManager:
         for attempt in range(max_retries + 1):
             attempts_made = attempt + 1
             if attempt > 0:
-                # Exponential backoff: 1s, 2s, 4s, etc.
-                delay = 2 ** (attempt - 1)
+                # Exponential backoff with full jitter to prevent thundering herd
+                base_delay = 2 ** (attempt - 1)
+                jitter = random.uniform(0, base_delay)
+                delay = base_delay + jitter
                 logger.warning(
-                    "Download attempt %d/%d failed: %s. Retrying in %ds...",
+                    "Download attempt %d/%d failed: %s. Retrying in %.1fs...",
                     attempt, max_retries + 1, last_error, delay
                 )
                 await asyncio.sleep(delay)

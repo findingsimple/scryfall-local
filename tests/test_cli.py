@@ -188,6 +188,31 @@ class TestImportData:
             assert db_path.exists()
 
 
+    @pytest.mark.asyncio
+    async def test_import_data_reports_skipped_cards(self):
+        """Should print skip message when malformed cards are skipped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create JSON with a mix of valid and malformed cards
+            cards = [
+                {"id": "1", "name": "Good Card", "cmc": 1, "colors": []},
+                {"name": "No ID", "cmc": 2, "colors": []},  # missing id
+                "not a dict",
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            printed = []
+            with patch("builtins.print", side_effect=lambda *a, **kw: printed.append(" ".join(str(x) for x in a))):
+                with patch("sys.stdout.write"):
+                    await import_data(tmpdir_path, json_file)
+
+            assert any("1 cards in database" in line for line in printed)
+            assert any("2 malformed cards skipped" in line for line in printed)
+
+
 class TestDownloadData:
     """Test download_data command."""
 
@@ -258,7 +283,7 @@ class TestDownloadDataDefaults:
                 MockDataManager.return_value = mock_manager
 
                 with patch("builtins.print"), \
-                     patch("src.cli.import_to_temp_and_swap", return_value=100):
+                     patch("src.cli.import_to_temp_and_swap", return_value=(100, 0)):
                     await download_data(Path(tmpdir))
 
                 mock_manager.download_bulk_data.assert_called_once()

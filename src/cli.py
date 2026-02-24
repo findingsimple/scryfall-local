@@ -96,12 +96,14 @@ async def download_data(
             sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
-        total_cards = import_to_temp_and_swap(
+        total_cards, skipped = import_to_temp_and_swap(
             file_path, db_path, progress_callback=import_progress
         )
 
         print()
         print(f"Import complete! {total_cards:,} cards imported.")
+        if skipped:
+            print(f"  ({skipped:,} malformed cards skipped)")
 
         # Update metadata with card count
         manager.update_card_count(total_cards)
@@ -178,13 +180,15 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
             sys.stdout.write(f"\r  Importing... {imported:,} cards")
             sys.stdout.flush()
 
-        total_cards = import_to_temp_and_swap(
+        total_cards, skipped = import_to_temp_and_swap(
             json_file, db_path, progress_callback=import_progress
         )
 
         print()
         print()
         print(f"Import complete! {total_cards:,} cards in database.")
+        if skipped:
+            print(f"  ({skipped:,} malformed cards skipped)")
 
         # Update metadata
         manager.update_card_count(total_cards)

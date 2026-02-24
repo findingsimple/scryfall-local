@@ -870,3 +870,71 @@ class TestServerBackgroundRefresh:
                 # Old data should be gone
                 old_card = await server.call_tool("get_card", {"name": "Lightning Bolt"})
                 assert "error" in old_card
+
+    @pytest.mark.asyncio
+    async def test_refresh_integration_skips_malformed_cards(self):
+        """Integration test: refresh completes and logs warning when cards are malformed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Bulk data with one valid card and one malformed (missing id)
+            test_cards = [
+                {
+                    "id": "valid-1",
+                    "oracle_id": "valid-oracle-1",
+                    "name": "Valid Card",
+                    "mana_cost": "{1}{R}",
+                    "cmc": 2.0,
+                    "type_line": "Instant",
+                    "oracle_text": "Deal 3 damage.",
+                    "colors": ["R"],
+                    "color_identity": ["R"],
+                    "set": "tst",
+                    "set_name": "Test Set",
+                    "rarity": "common",
+                    "image_uris": {},
+                    "legalities": {"commander": "legal"},
+                    "prices": {},
+                },
+                {
+                    "name": "Malformed Card Without ID",
+                    "cmc": 1.0,
+                    "type_line": "Creature",
+                },
+            ]
+
+            bulk_data_path = tmpdir_path / "test_bulk_data.json"
+            with open(bulk_data_path, "w") as f:
+                json.dump(test_cards, f)
+
+            with ScryfallServer(tmpdir_path) as server:
+                mock_download = AsyncMock(return_value=bulk_data_path)
+                with patch.object(
+                    server._data_manager,
+                    "is_cache_stale",
+                    new=AsyncMock(return_value=True)
+                ), patch.object(
+                    server._data_manager,
+                    "download_bulk_data",
+                    new=mock_download
+                ):
+                    result = await server.call_tool("refresh_data", {})
+                    assert result["status"] == "downloading"
+
+                    for _ in range(50):
+                        await asyncio.sleep(0.1)
+                        if server._refresh_status in ("completed", "idle") or \
+                           server._refresh_status.startswith("error:"):
+                            break
+
+                    # Refresh should complete successfully despite malformed card
+                    assert server._refresh_status == "completed", \
+                        f"Refresh failed with status: {server._refresh_status}"
+
+                # Valid card should be queryable
+                valid = await server.call_tool("get_card", {"name": "Valid Card"})
+                assert valid["name"] == "Valid Card"
+
+                # Only 1 card should be in the database (malformed one skipped)
+                status = await server.call_tool("data_status", {})
+                assert status["card_count"] == 1

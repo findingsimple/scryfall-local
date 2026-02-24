@@ -34,9 +34,10 @@ class TestImportCardsStreaming:
             store = CardStore(db_path)
 
             try:
-                count = import_cards_streaming(json_file, store)
+                count, skipped = import_cards_streaming(json_file, store)
 
                 assert count == 3
+                assert skipped == 0
                 assert store.get_card_count() == 3
             finally:
                 store.close()
@@ -64,11 +65,12 @@ class TestImportCardsStreaming:
                 progress_calls.append(card_count)
 
             try:
-                count = import_cards_streaming(
+                count, skipped = import_cards_streaming(
                     json_file, store, progress_callback=progress_callback
                 )
 
                 assert count == 1500
+                assert skipped == 0
                 # Should have been called at least twice (after first batch and final)
                 assert len(progress_calls) >= 2
                 # Progress should be increasing
@@ -92,9 +94,10 @@ class TestImportCardsStreaming:
             store = CardStore(db_path)
 
             try:
-                count = import_cards_streaming(json_file, store)
+                count, skipped = import_cards_streaming(json_file, store)
 
                 assert count == 0
+                assert skipped == 0
                 assert store.get_card_count() == 0
             finally:
                 store.close()
@@ -123,7 +126,7 @@ class TestImportCardsStreaming:
 
             try:
                 # Use batch size of 100, so we should get callbacks at 100, 200, 250
-                count = import_cards_streaming(
+                count, skipped = import_cards_streaming(
                     json_file,
                     store,
                     batch_size=100,
@@ -131,6 +134,7 @@ class TestImportCardsStreaming:
                 )
 
                 assert count == 250
+                assert skipped == 0
                 # With batch_size=100 and 250 cards: callbacks at 100, 200, 250
                 assert len(progress_calls) == 3
                 assert progress_calls == [100, 200, 250]
@@ -166,8 +170,9 @@ class TestImportCardsStreaming:
 
             try:
                 # ijson.items("item") expects array items; object yields 0 cards
-                count = import_cards_streaming(json_file, store)
+                count, skipped = import_cards_streaming(json_file, store)
                 assert count == 0
+                assert skipped == 0
             finally:
                 store.close()
 
@@ -288,6 +293,172 @@ class TestImportCardsStreaming:
             card = store.get_card_by_name("Test")
             assert card is not None
 
+    def test_skip_card_missing_id(self):
+        """Should skip cards missing the 'id' field and import the rest."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": "1", "name": "Good Card", "cmc": 1, "colors": []},
+                {"name": "No ID Card", "cmc": 2, "colors": []},  # missing id
+                {"id": "3", "name": "Another Good", "cmc": 3, "colors": []},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(json_file, store)
+
+                assert count == 2
+                assert skipped == 1
+                assert store.get_card_count() == 2
+                assert store.get_card_by_name("Good Card") is not None
+                assert store.get_card_by_name("Another Good") is not None
+                assert store.get_card_by_name("No ID Card") is None
+            finally:
+                store.close()
+
+    def test_skip_non_dict_item(self):
+        """Should skip non-dict items in the JSON array."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": "1", "name": "Good Card", "cmc": 1, "colors": []},
+                "not a dict",
+                42,
+                None,
+                {"id": "5", "name": "Also Good", "cmc": 2, "colors": []},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(json_file, store)
+
+                assert count == 2
+                assert skipped == 3
+                assert store.get_card_count() == 2
+                assert store.get_card_by_name("Good Card") is not None
+                assert store.get_card_by_name("Also Good") is not None
+            finally:
+                store.close()
+
+    def test_skip_card_with_empty_string_id(self):
+        """Should skip cards with empty string id."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": "1", "name": "Good Card", "cmc": 1, "colors": []},
+                {"id": "", "name": "Empty ID", "cmc": 2, "colors": []},
+                {"id": "3", "name": "Also Good", "cmc": 3, "colors": []},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(json_file, store)
+
+                assert count == 2
+                assert skipped == 1
+                assert store.get_card_by_name("Empty ID") is None
+            finally:
+                store.close()
+
+    def test_skip_card_with_none_id(self):
+        """Should skip cards with None id value."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": "1", "name": "Good Card", "cmc": 1, "colors": []},
+                {"id": None, "name": "Null ID", "cmc": 2, "colors": []},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(json_file, store)
+
+                assert count == 1
+                assert skipped == 1
+                assert store.get_card_by_name("Null ID") is None
+            finally:
+                store.close()
+
+    def test_skip_malformed_at_batch_boundary(self):
+        """Should handle malformed card at a batch boundary correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": "1", "name": "Card A", "cmc": 1, "colors": []},
+                {"id": "2", "name": "Card B", "cmc": 2, "colors": []},
+                "malformed at boundary",  # position 2, right at batch_size=2
+                {"id": "4", "name": "Card D", "cmc": 4, "colors": []},
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(
+                    json_file, store, batch_size=2
+                )
+
+                assert count == 3
+                assert skipped == 1
+                assert store.get_card_count() == 3
+                assert store.get_card_by_name("Card A") is not None
+                assert store.get_card_by_name("Card B") is not None
+                assert store.get_card_by_name("Card D") is not None
+            finally:
+                store.close()
+
+    def test_all_valid_cards_zero_skipped(self):
+        """Should report zero skipped when all cards are valid."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            cards = [
+                {"id": str(i), "name": f"Card {i}", "cmc": i, "colors": []}
+                for i in range(5)
+            ]
+            json_file = tmpdir_path / "cards.json"
+            with open(json_file, "w") as f:
+                json.dump(cards, f)
+
+            db_path = tmpdir_path / "cards.db"
+            store = CardStore(db_path)
+
+            try:
+                count, skipped = import_cards_streaming(json_file, store)
+
+                assert count == 5
+                assert skipped == 0
+            finally:
+                store.close()
+
 
 class TestImportToTempAndSwap:
     """Test atomic temp-database-then-swap import."""
@@ -313,9 +484,10 @@ class TestImportToTempAndSwap:
             json_file = self._make_json(tmpdir_path, self._sample_cards(3))
             db_path = tmpdir_path / "cards.db"
 
-            count = import_to_temp_and_swap(json_file, db_path)
+            count, skipped = import_to_temp_and_swap(json_file, db_path)
 
             assert count == 3
+            assert skipped == 0
             assert db_path.exists()
             with CardStore(db_path) as store:
                 assert store.get_card_count() == 3
@@ -392,7 +564,7 @@ class TestImportToTempAndSwap:
             temp_path = db_path.with_suffix(".db.tmp")
             temp_path.write_text("leftover")
 
-            count = import_to_temp_and_swap(json_file, db_path)
+            count, _ = import_to_temp_and_swap(json_file, db_path)
 
             assert count == 3
             assert not temp_path.exists()
@@ -414,7 +586,7 @@ class TestImportToTempAndSwap:
                 {"id": "new-1", "name": "New Card A", "cmc": 2, "colors": ["R"]},
                 {"id": "new-2", "name": "New Card B", "cmc": 3, "colors": ["U"]},
             ])
-            count = import_to_temp_and_swap(new_json, db_path)
+            count, _ = import_to_temp_and_swap(new_json, db_path)
 
             assert count == 2
             with CardStore(db_path) as store:
@@ -430,7 +602,7 @@ class TestImportToTempAndSwap:
             db_path = tmpdir_path / "cards.db"
 
             progress_calls = []
-            count = import_to_temp_and_swap(
+            count, _ = import_to_temp_and_swap(
                 json_file, db_path,
                 progress_callback=lambda n: progress_calls.append(n),
             )
@@ -488,7 +660,7 @@ class TestImportToTempAndSwap:
 
             # Run a new import
             new_json = self._make_json(tmpdir_path, self._sample_cards(3))
-            count = import_to_temp_and_swap(new_json, db_path)
+            count, _ = import_to_temp_and_swap(new_json, db_path)
 
             assert count == 3
             assert not wal_path.exists()

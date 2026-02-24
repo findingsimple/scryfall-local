@@ -1,9 +1,19 @@
 """Shared utilities for importing card data."""
 
+import logging
 from pathlib import Path
 from typing import Any, Callable
 
 from src.card_store import CardStore
+
+logger = logging.getLogger(__name__)
+
+
+def _card_preview(card: Any) -> str:
+    """Return a short string representation of a card for log messages."""
+    if isinstance(card, dict):
+        return str({k: card[k] for k in list(card)[:3]})
+    return repr(card)[:120]
 
 
 def import_cards_streaming(
@@ -11,11 +21,14 @@ def import_cards_streaming(
     store: CardStore,
     batch_size: int = 1000,
     progress_callback: Callable[[int], None] | None = None,
-) -> int:
+) -> tuple[int, int]:
     """Import cards from JSON using streaming parser.
 
     Uses ijson to parse the JSON file incrementally, reducing memory usage
     from ~2.5GB to a small fixed amount regardless of file size.
+
+    Cards that are not dicts or are missing the ``"id"`` key (the primary key)
+    are skipped with a warning rather than aborting the entire import.
 
     Note: This function does NOT manage the store lifecycle. The caller is
     responsible for opening and closing the store connection.
@@ -27,7 +40,7 @@ def import_cards_streaming(
         progress_callback: Optional callback(card_count) for progress updates
 
     Returns:
-        Total number of cards imported
+        Tuple of (cards_imported, cards_skipped)
 
     Raises:
         ImportError: If ijson is not installed
@@ -44,10 +57,18 @@ def import_cards_streaming(
 
     batch: list[dict[str, Any]] = []
     card_count = 0
+    skipped = 0
 
     with open(json_file, "rb") as f:
         # ijson.items streams through the JSON array one item at a time
         for card in ijson.items(f, "item"):
+            if not isinstance(card, dict) or not card.get("id"):
+                skipped += 1
+                logger.warning(
+                    "Skipping malformed card (missing id): %s",
+                    _card_preview(card),
+                )
+                continue
             batch.append(card)
             if len(batch) >= batch_size:
                 store.insert_cards(batch)
@@ -63,7 +84,7 @@ def import_cards_streaming(
         if progress_callback:
             progress_callback(card_count)
 
-    return card_count
+    return card_count, skipped
 
 
 def import_to_temp_and_swap(
@@ -71,7 +92,7 @@ def import_to_temp_and_swap(
     db_path: Path,
     batch_size: int = 1000,
     progress_callback: Callable[[int], None] | None = None,
-) -> int:
+) -> tuple[int, int]:
     """Import cards into a temp database, then atomically swap it into place.
 
     Imports into db_path.with_suffix('.db.tmp'), then uses Path.replace()
@@ -84,7 +105,7 @@ def import_to_temp_and_swap(
         progress_callback: Optional callback(card_count) for progress updates
 
     Returns:
-        Total number of cards imported
+        Tuple of (cards_imported, cards_skipped)
 
     Raises:
         ImportError: If ijson is not installed
@@ -98,7 +119,7 @@ def import_to_temp_and_swap(
 
         # Import into temp database
         with CardStore(temp_path) as store:
-            card_count = import_cards_streaming(
+            card_count, skipped = import_cards_streaming(
                 json_file, store, batch_size=batch_size,
                 progress_callback=progress_callback,
             )
@@ -117,7 +138,7 @@ def import_to_temp_and_swap(
                 except OSError:
                     pass
 
-        return card_count
+        return card_count, skipped
 
     except BaseException:
         # On any failure, clean up temp files and re-raise (old DB untouched)

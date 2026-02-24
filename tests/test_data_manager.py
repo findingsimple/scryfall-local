@@ -701,3 +701,134 @@ class TestDataManagerStatus:
 
                 assert status.card_count == 50000
                 assert status.last_updated is not None
+
+
+class TestRetryJitter:
+    """Test that retry backoff includes jitter."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_retry_delay_includes_jitter(self):
+        """Sleep delay should include jitter from random.uniform."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        # First attempt fails, second succeeds
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        call_count = 0
+
+        mock_response_fail = MagicMock()
+        mock_response_fail.raise_for_status = MagicMock()
+        mock_response_fail.headers = {"Content-Length": "1000"}
+
+        async def short_stream(chunk_size=8192):
+            yield b"x" * 100
+
+        mock_response_fail.aiter_bytes = short_stream
+        mock_response_fail.aclose = AsyncMock()
+
+        mock_response_ok = MagicMock()
+        mock_response_ok.raise_for_status = MagicMock()
+        mock_response_ok.headers = {"Content-Length": str(len(sample_data))}
+
+        async def full_stream(chunk_size=8192):
+            yield sample_data
+
+        mock_response_ok.aiter_bytes = full_stream
+        mock_response_ok.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    nonlocal call_count
+                    if "all-cards" in url:
+                        call_count += 1
+                        if call_count == 1:
+                            return mock_response_fail
+                        return mock_response_ok
+                    return await original_validated_get(url, **kwargs)
+
+                sleep_values = []
+
+                async def mock_sleep(delay):
+                    sleep_values.append(delay)
+
+                with patch.object(manager, "_validated_get", side_effect=patched_get), \
+                     patch("src.data_manager.random.uniform", return_value=0.75) as mock_uniform, \
+                     patch("asyncio.sleep", side_effect=mock_sleep):
+                    await manager.download_bulk_data("all_cards", max_retries=1)
+
+                # First retry: base_delay=1, jitter=0.75, total=1.75
+                assert len(sleep_values) == 1
+                assert sleep_values[0] == pytest.approx(1.75)
+                # Jitter range should be [0, base_delay]
+                mock_uniform.assert_called_once_with(0, 1)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_retry_jitter_increases_with_attempt(self):
+        """Later retries should have larger base delays with jitter."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        sample_data = json.dumps([{"id": "123", "name": "Test"}]).encode()
+        call_count = 0
+
+        def make_fail_response():
+            mock = MagicMock()
+            mock.raise_for_status = MagicMock()
+            mock.headers = {"Content-Length": "1000"}
+
+            async def short_stream(chunk_size=8192):
+                yield b"x" * 100
+
+            mock.aiter_bytes = short_stream
+            mock.aclose = AsyncMock()
+            return mock
+
+        mock_response_ok = MagicMock()
+        mock_response_ok.raise_for_status = MagicMock()
+        mock_response_ok.headers = {"Content-Length": str(len(sample_data))}
+
+        async def full_stream(chunk_size=8192):
+            yield sample_data
+
+        mock_response_ok.aiter_bytes = full_stream
+        mock_response_ok.aclose = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                original_validated_get = manager._validated_get
+
+                async def patched_get(url, **kwargs):
+                    nonlocal call_count
+                    if "all-cards" in url:
+                        call_count += 1
+                        if call_count <= 2:
+                            return make_fail_response()
+                        return mock_response_ok
+                    return await original_validated_get(url, **kwargs)
+
+                sleep_values = []
+
+                async def mock_sleep(delay):
+                    sleep_values.append(delay)
+
+                # random.uniform returns 0.5 each time
+                with patch.object(manager, "_validated_get", side_effect=patched_get), \
+                     patch("src.data_manager.random.uniform", return_value=0.5) as mock_uniform, \
+                     patch("asyncio.sleep", side_effect=mock_sleep):
+                    await manager.download_bulk_data("all_cards", max_retries=2)
+
+                # Attempt 1 retry: base=1, jitter=0.5 → 1.5
+                # Attempt 2 retry: base=2, jitter=0.5 → 2.5
+                assert len(sleep_values) == 2
+                assert sleep_values[0] == pytest.approx(1.5)
+                assert sleep_values[1] == pytest.approx(2.5)
+                # Jitter range should scale with base_delay
+                from unittest.mock import call
+                assert mock_uniform.call_args_list == [call(0, 1), call(0, 2)]
