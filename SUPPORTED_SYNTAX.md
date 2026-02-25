@@ -448,15 +448,15 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 - [ ] **is: filters** - Card characteristic flags
   - Syntax: `is:reserved`, `is:reprint`, `is:promo`, `is:digital`, `is:full`, `is:foil`, `is:nonfoil`, `is:etched`
-  - Requires extracting fields from raw_data: `reserved`, `reprint`, `promo`, `digital`, `full_art`, `foil`, `nonfoil`
+  - Requires adding dedicated columns: `reserved`, `reprint`, `promo`, `digital`, `full_art`, `foil`, `nonfoil`
 
 - [ ] **game: filter** - Platform availability
   - Syntax: `game:paper`, `game:arena`, `game:mtgo`
-  - Requires `games` array from raw_data
+  - Requires adding a `games` column
 
 - [ ] **lang: filter** - Card language
   - Syntax: `lang:en`, `lang:ja`, `lang:de`, `lang:ko`
-  - Requires `lang` field from raw_data
+  - Requires adding a `lang` column
 
 - [ ] **unique: filter** - Deduplicate results
   - Syntax: `unique:cards` (by oracle_id), `unique:art` (by illustration_id), `unique:prints` (all)
@@ -471,11 +471,11 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 - [ ] **frame: filter** - Card frame style
   - Syntax: `frame:2015`, `frame:modern`, `frame:old`, `frame:future`
-  - Requires `frame` field from raw_data
+  - Requires adding a `frame` column
 
 - [ ] **border: filter** - Card border color
   - Syntax: `border:black`, `border:white`, `border:silver`, `border:gold`, `border:borderless`
-  - Requires `border_color` field from raw_data
+  - Requires adding a `border_color` column
 
 - [ ] **date: filter** - Exact release date
   - Syntax: `date:2023-01-01`, `date>=2020-06-15`, `date<2019-01-01`
@@ -487,17 +487,17 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 - [ ] **stamp: filter** - Security stamp type
   - Syntax: `stamp:oval`, `stamp:acorn`, `stamp:triangle`, `stamp:arena`, `stamp:heart`
-  - Requires `security_stamp` field from raw_data
+  - Requires adding a `security_stamp` column
 
 ### Lower Priority
 
 - [ ] **art: filter** - Art treatment
   - Syntax: `is:fullart`, `is:extendedart`, `art:full`, `art:extended`
-  - Requires `full_art` field from raw_data
+  - Requires adding a `full_art` column
 
 - [ ] **illustration: filter** - Specific illustration
   - Syntax: `illustration:uuid`
-  - Requires `illustration_id` field from raw_data
+  - Requires adding an `illustration_id` column
 
 - [ ] **new: filter** - Changed elements in reprints
   - Syntax: `new:art`, `new:flavor`, `new:frame`, `new:artist`
@@ -537,7 +537,7 @@ Features that could be implemented to achieve fuller Scryfall parity:
 
 ### Implementation Notes
 
-**Database columns that may need adding:**
+**Database columns that would need adding** (no `raw_data` fallback exists — each field needs a dedicated column):
 - `frame` (text) - frame style
 - `border_color` (text) - border color
 - `lang` (text) - language code

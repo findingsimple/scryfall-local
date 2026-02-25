@@ -230,6 +230,10 @@ class DataManager:
     ) -> Path:
         """Download bulk data file with retry support.
 
+        Downloads to a temporary file and atomically renames on completion,
+        preventing partial files if interrupted. Retries use exponential
+        backoff with jitter.
+
         Args:
             data_type: Type of bulk data to download
             progress_callback: Optional callback for progress updates (downloaded, total)

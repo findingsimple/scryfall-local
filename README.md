@@ -124,6 +124,8 @@ python -m src.cli download   # Downloads JSON file
 python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
 ```
 
+> **Atomic download:** Data is written to a temporary file and atomically renamed on completion, preventing partial files if interrupted.
+>
 > **Atomic import:** Cards are loaded into a temporary database, then swapped into place in a single operation. If import fails mid-way, the existing database is untouched.
 
 ## MCP Tools
@@ -186,6 +188,8 @@ Each card returned includes these fields:
 | `flavor_text` | string | Flavor text |
 | `collector_number` | string | Collector number |
 | `layout` | string | Card layout (normal, transform, modal_dfc, split, adventure, etc.) |
+| `produced_mana` | array | Mana colors this card can produce |
+| `watermark` | string | Guild/faction watermark |
 | `produces_tokens` | array | Names of tokens this card creates |
 | `image_uris` | object | Image URLs (small, normal, large, etc.) |
 | `legalities` | object | Format legality map |

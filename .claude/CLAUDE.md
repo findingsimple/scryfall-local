@@ -114,16 +114,11 @@ The `data/` directory is gitignored.
 
 ## Database Design Principles
 
-**Favor separate columns over `raw_data` for queried fields.**
+**All queried fields are stored as dedicated columns.**
 
-When a field is used for filtering or should appear in search results, add it as a dedicated column in the `cards` table rather than relying on `json_extract(raw_data, ...)`. This provides:
-- Better query performance (can be indexed)
-- Fields visible in search results
-- Cleaner filter code
+Every field used for filtering or returned in search results has its own column in the `cards` table. There is no `raw_data` fallback column — if a new field is needed, add a dedicated column for it.
 
-Current top-level columns include: `name`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`, `layout`, `produced_mana`, `watermark`, `produces_tokens`.
-
-The `raw_data` column stores the complete Scryfall JSON for any fields not yet promoted to columns.
+Current columns include: `name`, `mana_cost`, `cmc`, `type_line`, `oracle_text`, `power`, `toughness`, `colors`, `color_identity`, `keywords`, `set_code`, `rarity`, `artist`, `released_at`, `loyalty`, `flavor_text`, `collector_number`, `layout`, `produced_mana`, `watermark`, `produces_tokens`.
 
 ## Query Execution
 
@@ -137,6 +132,11 @@ Fallbacks to SQL LIKE:
 - OR groups (`t:creature OR t:instant`) — FTS5 allows only one MATCH per query
 
 Mixed queries (e.g., `o:flying c:blue cmc:3`) use the FTS5 JOIN for text filters and standard WHERE conditions for the rest, all in a single query.
+
+Security measures:
+- All queries use parameterised SQL (`?` placeholders)
+- LIKE wildcards (`%`, `_`) in user input are escaped via `_escape_like()`
+- Query strings are limited to 1,000 characters (`MAX_QUERY_LENGTH`)
 
 ## Context7 MCP Integration
 
