@@ -34,26 +34,25 @@ Register the MCP server using the Claude Code CLI:
 
 ```bash
 # Add for all projects (user scope)
-claude mcp add scryfall-local -s user -- /path/to/scryfall-local/.venv/bin/python -m src.server
+claude mcp add scryfall-local -s user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
 
 # Or add for current project only (local scope)
-claude mcp add scryfall-local -- /path/to/scryfall-local/.venv/bin/python -m src.server
+claude mcp add scryfall-local -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
 ```
 
 Replace `/path/to/scryfall-local` with the actual path to this repository.
 
-Then add `"cwd"` to the server entry in `~/.claude.json` (or `.claude/settings.json` for local scope):
+This produces the following entry in `~/.claude.json` (or `.claude/settings.json` for local scope):
 
 ```json
 "scryfall-local": {
-  "command": "/path/to/scryfall-local/.venv/bin/python",
-  "args": ["-m", "src.server"],
-  "cwd": "/path/to/scryfall-local",
+  "command": "/bin/bash",
+  "args": ["-c", "cd /path/to/scryfall-local && .venv/bin/python -m src.server"],
   "type": "stdio"
 }
 ```
 
-> **Note:** The `cwd` field is required because the server uses `-m src.server` (relative module). Without it, Claude Code resolves the module from its current working directory, which can cause conflicts if you have multiple MCP servers with the same module structure. The CLI doesn't support `--cwd`, so it must be added to the JSON config directly.
+> **Note:** The `cd &&` wrapper is used instead of the `cwd` field because the VS Code extension [ignores `cwd`](https://github.com/anthropics/claude-code/issues/43422), causing module path collisions when multiple MCP servers share the same `-m src.server` entry point.
 
 **Important notes:**
 - You do **not** need to manually start the server - Claude Code automatically starts MCP servers when it launches
@@ -68,9 +67,8 @@ Alternatively, add this snippet to your project's `.claude/settings.json`:
 {
   "mcpServers": {
     "scryfall-local": {
-      "command": "/path/to/scryfall-local/.venv/bin/python",
-      "args": ["-m", "src.server"],
-      "cwd": "/path/to/scryfall-local",
+      "command": "/bin/bash",
+      "args": ["-c", "cd /path/to/scryfall-local && .venv/bin/python -m src.server"],
       "type": "stdio"
     }
   }

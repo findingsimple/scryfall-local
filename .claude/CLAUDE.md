@@ -51,8 +51,8 @@ python -m src.server
 Register with Claude Code CLI (no manual server start needed):
 
 ```bash
-# Add for all projects
-claude mcp add scryfall-local -s user -- /path/to/.venv/bin/python -m src.server
+# Add for all projects (uses cd wrapper — VS Code extension ignores cwd field)
+claude mcp add scryfall-local -s user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
 
 # Verify connection
 claude mcp list
