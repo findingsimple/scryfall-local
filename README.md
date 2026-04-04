@@ -42,6 +42,19 @@ claude mcp add scryfall-local -- /path/to/scryfall-local/.venv/bin/python -m src
 
 Replace `/path/to/scryfall-local` with the actual path to this repository.
 
+Then add `"cwd"` to the server entry in `~/.claude.json` (or `.claude/settings.json` for local scope):
+
+```json
+"scryfall-local": {
+  "command": "/path/to/scryfall-local/.venv/bin/python",
+  "args": ["-m", "src.server"],
+  "cwd": "/path/to/scryfall-local",
+  "type": "stdio"
+}
+```
+
+> **Note:** The `cwd` field is required because the server uses `-m src.server` (relative module). Without it, Claude Code resolves the module from its current working directory, which can cause conflicts if you have multiple MCP servers with the same module structure. The CLI doesn't support `--cwd`, so it must be added to the JSON config directly.
+
 **Important notes:**
 - You do **not** need to manually start the server - Claude Code automatically starts MCP servers when it launches
 - After adding, restart Claude Code for the server to be available
@@ -56,7 +69,9 @@ Alternatively, add this snippet to your project's `.claude/settings.json`:
   "mcpServers": {
     "scryfall-local": {
       "command": "/path/to/scryfall-local/.venv/bin/python",
-      "args": ["-m", "src.server"]
+      "args": ["-m", "src.server"],
+      "cwd": "/path/to/scryfall-local",
+      "type": "stdio"
     }
   }
 }
