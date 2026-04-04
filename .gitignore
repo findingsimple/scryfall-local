@@ -44,6 +44,10 @@ htmlcov/
 # mypy
 .mypy_cache/
 
+# Claude Code (personal settings)
+.claude/settings.local.json
+.claude/agents/
+
 # OS
 .DS_Store
 Thumbs.db
