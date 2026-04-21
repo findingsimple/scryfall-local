@@ -12,18 +12,15 @@ A local MCP (Model Context Protocol) server that caches Scryfall's Magic: The Ga
 
 ## Installation
 
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
 ```bash
 # Clone the repository
 git clone <repo-url>
 cd scryfall-local
 
-# Create virtual environment and install dependencies
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Or with uv (recommended — uses lockfile for reproducible installs)
-uv sync --all-extras
+# Install dependencies (including dev deps) from lockfile
+uv sync
 ```
 
 ## Usage
@@ -34,7 +31,7 @@ Register the MCP server using the Claude Code CLI:
 
 ```bash
 # Add for all projects (user scope)
-claude mcp add scryfall-local -s user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
+claude mcp add scryfall-local --scope user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
 
 # Or add for current project only (local scope)
 claude mcp add scryfall-local -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
@@ -82,8 +79,7 @@ Or to your user settings at `~/.claude/settings.json` to make it available acros
 For development or testing outside of Claude Code:
 
 ```bash
-source .venv/bin/activate
-python -m src.server
+uv run python -m src.server
 ```
 
 ### CLI Commands
@@ -91,25 +87,23 @@ python -m src.server
 The CLI tool manages downloading and importing card data:
 
 ```bash
-source .venv/bin/activate
-
 # Check current data status
-python -m src.cli status
+uv run python -m src.cli status
 
 # Download bulk card data (~160 MB for oracle_cards)
-python -m src.cli download
+uv run python -m src.cli download
 
 # Download a larger dataset with all printings (~2.3 GB)
-python -m src.cli download --type all_cards
+uv run python -m src.cli download --type all_cards
 
 # Force re-download even if data is current
-python -m src.cli download --force
+uv run python -m src.cli download --force
 
 # Import downloaded JSON into SQLite database
-python -m src.cli import
+uv run python -m src.cli import
 
 # Import a specific JSON file
-python -m src.cli import --file path/to/cards.json
+uv run python -m src.cli import --file path/to/cards.json
 ```
 
 #### Available Data Types
@@ -133,8 +127,8 @@ python -m src.cli import --file path/to/cards.json
 If you download data separately, run `import` to load it into the database:
 
 ```bash
-python -m src.cli download   # Downloads JSON file
-python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
+uv run python -m src.cli download   # Downloads JSON file
+uv run python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
 ```
 
 > **Atomic download:** Data is written to a temporary file and atomically renamed on completion, preventing partial files if interrupted.
@@ -244,14 +238,13 @@ See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 ### Running Tests
 
 ```bash
-source .venv/bin/activate
-pytest -v
+uv run pytest -v
 ```
 
 ### Test Coverage
 
 ```bash
-pytest --cov=src --cov-report=term-missing
+uv run pytest --cov=src --cov-report=term-missing
 ```
 
 ## Architecture

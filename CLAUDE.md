@@ -23,27 +23,23 @@ src/
 ## Key Commands
 
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Install dependencies (uv preferred — uses lockfile for reproducible installs)
-uv sync --all-extras
-# Or with pip: pip install -e ".[dev]"
+# Install dependencies (from uv.lock — reproducible)
+uv sync
 
 # Run tests
-pytest -v
+uv run pytest -v
 
 # Check data status
-python -m src.cli status
+uv run python -m src.cli status
 
 # Download/update card data
-python -m src.cli download
+uv run python -m src.cli download
 
 # Import JSON into database
-python -m src.cli import
+uv run python -m src.cli import
 
 # Run MCP server manually (for testing only)
-python -m src.server
+uv run python -m src.server
 ```
 
 ## MCP Server Setup
@@ -52,7 +48,7 @@ Register with Claude Code CLI (no manual server start needed):
 
 ```bash
 # Add for all projects (uses cd wrapper — VS Code extension ignores cwd field)
-claude mcp add scryfall-local -s user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
+claude mcp add scryfall-local --scope user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
 
 # Verify connection
 claude mcp list
@@ -71,9 +67,9 @@ Tests are written TDD-style with pytest:
 - `tests/test_import_utils.py` - Streaming import and atomic DB swap
 
 ```bash
-pytest -v                           # Run all tests
-pytest --cov=src                    # With coverage
-pytest tests/test_query_parser.py   # Single file
+uv run pytest -v                           # Run all tests
+uv run pytest --cov=src                    # With coverage
+uv run pytest tests/test_query_parser.py   # Single file
 ```
 
 ## Query Syntax
@@ -137,22 +133,6 @@ Security measures:
 - All queries use parameterised SQL (`?` placeholders)
 - LIKE wildcards (`%`, `_`) in user input are escaped via `_escape_like()`
 - Query strings are limited to 1,000 characters (`MAX_QUERY_LENGTH`)
-
-## Context7 MCP Integration
-
-Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
-
-**Use Context7 for:**
-- Library/framework documentation lookups
-- API reference documentation
-- Code generation with specific libraries
-- Setup and configuration steps for tools/frameworks
-- Best practices for libraries and frameworks
-
-**How to use it:**
-1. Automatically resolve library IDs when a library is mentioned
-2. Fetch documentation proactively when working with libraries
-3. Don't wait for me to ask - use it when it would be helpful
 
 ## Future Enhancements
 
