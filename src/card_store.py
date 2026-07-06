@@ -13,7 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from src.query_parser import ParsedQuery
+from src.query_parser import MULTI_VALUE_FILTERS, Condition, ParsedQuery
 
 logger = logging.getLogger(__name__)
 
@@ -879,6 +879,13 @@ class CardStore:
     ) -> None:
         """Add negated color filter conditions.
 
+        Renders the exact logical complement of the corresponding positive
+        filter — including its operator — by wrapping the positive conditions
+        in NOT (...). So -c:rg means "not (red and green)" (missing red or
+        missing green, matching Scryfall), and -c<=wu means "not a subset of
+        white/blue". The colors columns always hold JSON text (at least
+        '[]'), never NULL, so the NOT is NULL-safe.
+
         Args:
             filters: Filter dictionary
             key: Key to look up in filters
@@ -889,16 +896,11 @@ class CardStore:
         if key not in filters:
             return
 
-        color_filter = filters[key]
-        colors = color_filter.get("value", [])
+        inner_conditions: list[str] = []
+        self._add_color_filter(filters, key, column, inner_conditions, params)
 
-        if not colors:
-            # -c:colorless means NOT colorless, i.e., has at least one color
-            conditions.append(f"{column} != '[]'")
-        else:
-            for c in colors:
-                conditions.append(f"{column} NOT LIKE ?")
-                params.append(f'%"{c}"%')
+        if inner_conditions:
+            conditions.append(f"NOT ({' AND '.join(inner_conditions)})")
 
     def _build_conditions_for_filters(
         self, filters: dict[str, Any], use_fts: bool = False
@@ -920,9 +922,15 @@ class CardStore:
         if "name_exact" in filters:
             conditions.append("name = ?")
             params.append(filters["name_exact"])
+        if "name_exact_not" in filters:
+            conditions.append("name != ?")
+            params.append(filters["name_exact_not"])
         if "name_strict" in filters:
             conditions.append("name = ? COLLATE BINARY")
             params.append(filters["name_strict"])
+        if "name_strict_not" in filters:
+            conditions.append("NOT (name = ? COLLATE BINARY)")
+            params.append(filters["name_strict_not"])
 
         # Partial name filters (LIKE matching)
         self._add_like_filter(filters, "name_partial", "name", conditions, params)
@@ -1156,6 +1164,58 @@ class CardStore:
 
         return conditions, params
 
+    def _get_groups(self, parsed: ParsedQuery) -> list[list[Condition]]:
+        """Get the query as DNF condition groups.
+
+        Uses the canonical ``parsed.groups`` when the parser set it. Falls
+        back to deriving groups from the legacy ``filters``/``or_groups``
+        fields for hand-constructed ParsedQuery objects (e.g. in tests).
+
+        Returns:
+            List of OR-ed groups, each a list of AND-ed (key, value) conditions
+        """
+        if parsed.groups is not None:
+            return parsed.groups
+
+        if parsed.has_or_clause and parsed.or_groups:
+            return [
+                [(key, value) for cond in group for key, value in cond.items()]
+                for group in parsed.or_groups
+            ]
+
+        group: list[Condition] = []
+        for key, value in parsed.filters.items():
+            if key in MULTI_VALUE_FILTERS and isinstance(value, list):
+                group.extend((key, v) for v in value)
+            else:
+                group.append((key, value))
+        return [group] if group else []
+
+    def _build_conditions_for_group(
+        self, group: list[Condition], use_fts: bool = False
+    ) -> tuple[list[str], list[Any]]:
+        """Build SQL conditions for one AND-group of conditions.
+
+        Each condition is built independently (they are AND-ed), so repeated
+        filter keys (e.g. cmc>=2 cmc<=4) each contribute their own condition.
+
+        Args:
+            group: List of (filter_key, filter_value) conditions
+            use_fts: If True, skip conditions handled by FTS5 MATCH
+
+        Returns:
+            Tuple of (conditions list, params list)
+        """
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        for key, value in group:
+            cond, par = self._build_conditions_for_filters({key: value}, use_fts=use_fts)
+            conditions.extend(cond)
+            params.extend(par)
+
+        return conditions, params
+
     def _build_where_clause(
         self, parsed: ParsedQuery
     ) -> tuple[str | None, list[Any], bool]:
@@ -1171,24 +1231,21 @@ class CardStore:
             Tuple of (where_clause, params, uses_fts) where uses_fts
             indicates a JOIN on cards_fts is needed
         """
-        # No filters
-        if parsed.is_empty and not parsed.has_or_clause:
+        groups = self._get_groups(parsed)
+
+        if not groups:
             return None, [], False
 
-        # OR queries use LIKE fallback — FTS5 allows only one MATCH per
-        # query (per table), so OR branches can't each have their own MATCH.
-        # An alternative is UNION of per-branch FTS subqueries, but adds
-        # complexity for marginal gain (OR queries are uncommon in practice).
-        if parsed.has_or_clause and parsed.or_groups:
+        # Multi-group (OR) queries use LIKE fallback — FTS5 allows only one
+        # MATCH per query (per table), so OR branches can't each have their
+        # own MATCH. An alternative is UNION of per-branch FTS subqueries,
+        # but adds complexity for marginal gain.
+        if len(groups) > 1:
             group_clauses = []
             all_params: list[Any] = []
 
-            for group_filters in parsed.or_groups:
-                merged: dict[str, Any] = {}
-                for f in group_filters:
-                    merged.update(f)
-
-                conditions, params = self._build_conditions_for_filters(merged)
+            for group in groups:
+                conditions, params = self._build_conditions_for_group(group)
                 if conditions:
                     group_clauses.append(f"({' AND '.join(conditions)})")
                     all_params.extend(params)
@@ -1198,14 +1255,19 @@ class CardStore:
             else:
                 return "1=0", [], False
 
-        # Standard AND query — use FTS5 when eligible filters are present
-        uses_fts = self._has_fts_filters(parsed.filters)
+        # Single AND group — use FTS5 when eligible positive filters are present
+        group = groups[0]
+        fts_conditions = [(k, v) for k, v in group if k in _FTS_FILTER_MAP]
 
-        if uses_fts:
-            fts_match = self._build_fts_match_expr(parsed.filters)
-            conditions, params = self._build_conditions_for_filters(
-                parsed.filters, use_fts=True
-            )
+        if fts_conditions:
+            # Regroup for _build_fts_match_expr's dict-of-lists interface
+            fts_filters: dict[str, list[Any]] = {}
+            for key, value in fts_conditions:
+                fts_filters.setdefault(key, []).append(value)
+            fts_match = self._build_fts_match_expr(fts_filters)
+
+            rest = [(k, v) for k, v in group if k not in _FTS_FILTER_MAP]
+            conditions, params = self._build_conditions_for_group(rest, use_fts=True)
             if fts_match:
                 conditions.insert(0, "cards_fts MATCH ?")
                 params.insert(0, fts_match)
@@ -1213,7 +1275,7 @@ class CardStore:
                 return " AND ".join(conditions), params, True
             return None, [], False
         else:
-            conditions, params = self._build_conditions_for_filters(parsed.filters)
+            conditions, params = self._build_conditions_for_group(group)
             if conditions:
                 return " AND ".join(conditions), params, False
             return None, [], False

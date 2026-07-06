@@ -118,14 +118,39 @@ class QueryError(Exception):
         return f"{self.message}. Hint: {self.hint}"
 
 
+# A single filter condition: (filter_key, filter_value), e.g. ("cmc", {"operator": ">=", "value": 2})
+Condition = tuple[str, Any]
+
+# Filter keys that accumulate multiple values in the legacy `filters` dict view
+# (e.g. keyword:flying keyword:trample -> {"keyword": ["Flying", "Trample"]})
+MULTI_VALUE_FILTERS = frozenset({
+    'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not',
+    'flavor_text', 'flavor_text_not', 'produces_token', 'produces_token_not',
+    'name_partial', 'name_partial_not',
+})
+
+
 @dataclass
 class ParsedQuery:
-    """Structured representation of a parsed query."""
+    """Structured representation of a parsed query.
+
+    ``groups`` is the canonical representation: the query in disjunctive
+    normal form — a list of OR-ed groups, each group a list of AND-ed
+    (filter_key, filter_value) conditions. It preserves repeated filters
+    (e.g. cmc>=2 cmc<=4), parenthesized grouping, and group negation.
+
+    ``filters``, ``or_groups``, and ``has_or_clause`` are a legacy view kept
+    for introspection and for constructing queries by hand (e.g. in tests).
+    When produced by the parser they are derived from ``groups`` (so they
+    never contradict it), but the dict-keyed ``filters`` cannot represent
+    repeated non-text filters, so consumers should prefer ``groups``.
+    """
 
     filters: dict[str, Any] = field(default_factory=dict)
     or_groups: list[list[dict[str, Any]]] = field(default_factory=list)
     has_or_clause: bool = False
     raw_query: str = ""
+    groups: list[list[Condition]] | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -369,118 +394,190 @@ class QueryParser:
 
         return tokens
 
+    # Cap on OR-group expansion when normalizing to DNF. Cross products of
+    # parenthesized OR groups and De Morgan expansion of negated groups
+    # multiply group counts; beyond this the query is rejected rather than
+    # exploding. Set high enough that flat OR chains (which grow linearly
+    # and are bounded by MAX_QUERY_LENGTH anyway) are never rejected —
+    # only genuine cross-product blowup trips it.
+    MAX_OR_GROUPS = 500
+
     def _parse_tokens(self, tokens: list[tuple[str, Any]], raw_query: str) -> ParsedQuery:
-        """Parse tokens into ParsedQuery."""
+        """Parse tokens into ParsedQuery.
+
+        Recursive-descent grammar, normalized to disjunctive normal form:
+
+            or_expr  := and_expr (OR and_expr)*
+            and_expr := unary*
+            unary    := NEGATION* primary
+            primary  := LPAREN or_expr RPAREN | condition
+
+        A DNF is a list of OR-ed groups, each group a list of AND-ed
+        (key, value) conditions. An empty DNF ([]) means "no conditions".
+        """
+        groups, pos = self._parse_or_expr(tokens, 0)
+
+        if pos != len(tokens):
+            # Only an unmatched RPAREN can stop the descent early
+            raise QueryError(
+                "Unbalanced parentheses: extra closing ')'",
+                hint="Check that all closing parentheses have matching opening parentheses",
+                supported_syntax=SYNTAX_SUMMARY,
+            )
+
+        # Belt and braces: every combining step checks the cap, but a DNF
+        # produced as a sole term (e.g. by _negate_dnf seeding) must not
+        # slip through unchecked.
+        if len(groups) > self.MAX_OR_GROUPS:
+            raise self._too_complex_error()
+
+        # Legacy dict view, derived from the canonical groups so it can never
+        # contradict them (e.g. -(o:flying) shows oracle_text_not, not
+        # oracle_text). Lossy: repeated non-text filters keep the last value.
         filters: dict[str, Any] = {}
-        or_groups: list[list[dict[str, Any]]] = []
-        has_or = False
-        negated = False
-        or_from_parens = False  # Track if OR groups came from parentheses
-
-        # Simple state machine for parsing
-        current_group: list[dict[str, Any]] = []
-        i = 0
-
-        while i < len(tokens):
-            token_type, value = tokens[i]
-
-            if token_type == 'NEGATION':
-                negated = True
-                i += 1
-                continue
-
-            if token_type == 'OR':
-                has_or = True
-                if current_group:
-                    or_groups.append(current_group)
-                    current_group = []
-                i += 1
-                continue
-
-            if token_type == 'LPAREN':
-                # Find matching RPAREN and parse recursively
-                depth = 1
-                j = i + 1
-                while j < len(tokens) and depth > 0:
-                    if tokens[j][0] == 'LPAREN':
-                        depth += 1
-                    elif tokens[j][0] == 'RPAREN':
-                        depth -= 1
-                    j += 1
-
-                # Check for unbalanced parentheses
-                if depth > 0:
-                    raise QueryError(
-                        "Unbalanced parentheses: missing closing ')'",
-                        hint="Check that all opening parentheses have matching closing parentheses",
-                        supported_syntax=SYNTAX_SUMMARY,
-                    )
-
-                # Parse inner tokens
-                inner_tokens = tokens[i+1:j-1]
-                inner_result = self._parse_tokens(inner_tokens, raw_query)
-
-                # Merge inner filters
-                if inner_result.has_or_clause:
-                    has_or = True
-                    or_from_parens = True
-                    # Add any filters collected before parentheses to each inner OR group
-                    if current_group:
-                        for group in inner_result.or_groups:
-                            group.extend(current_group)
-                        current_group = []
-                    or_groups.extend(inner_result.or_groups)
+        for group in groups:
+            for key, value in group:
+                if key in MULTI_VALUE_FILTERS:
+                    existing = filters.setdefault(key, [])
+                    if value not in existing:
+                        existing.append(value)
                 else:
-                    current_group.append(inner_result.filters)
+                    filters[key] = value
 
-                i = j
-                negated = False
-                continue
-
-            if token_type == 'RPAREN':
-                # Unmatched closing parenthesis at top level
-                raise QueryError(
-                    "Unbalanced parentheses: extra closing ')'",
-                    hint="Check that all closing parentheses have matching opening parentheses",
-                    supported_syntax=SYNTAX_SUMMARY,
-                )
-
-            # Process filter tokens
-            filter_key = self._get_filter_key(token_type, negated)
-            filter_value = self._get_filter_value(token_type, value)
-
-            if filter_key and filter_value is not None:
-                # Handle multiple values for same filter type (e.g., keyword:flying keyword:trample)
-                # These filter types can have multiple values that should be ANDed together
-                multi_value_filters = {'keyword', 'keyword_not', 'type', 'type_not', 'oracle_text', 'oracle_text_not', 'flavor_text', 'flavor_text_not', 'produces_token', 'produces_token_not', 'name_partial', 'name_partial_not'}
-
-                if filter_key in multi_value_filters:
-                    if filter_key not in filters:
-                        filters[filter_key] = [filter_value]
-                    else:
-                        filters[filter_key].append(filter_value)
-                else:
-                    filters[filter_key] = filter_value
-                current_group.append({filter_key: filter_value})
-
-            negated = False
-            i += 1
-
-        # Handle remaining group for OR
-        if has_or:
-            if or_from_parens and current_group and or_groups:
-                # Distribute outer filters (after parentheses) to each OR group
-                # e.g., (t:elf OR t:goblin) c:green -> (elf AND green) OR (goblin AND green)
-                for group in or_groups:
-                    group.extend(current_group)
-            elif current_group:
-                or_groups.append(current_group)
+        has_or = len(groups) > 1
+        or_groups = (
+            [[{key: value} for key, value in group] for group in groups]
+            if has_or
+            else []
+        )
 
         return ParsedQuery(
             filters=filters,
             or_groups=or_groups,
             has_or_clause=has_or,
             raw_query=raw_query,
+            groups=groups,
+        )
+
+    def _parse_or_expr(
+        self, tokens: list[tuple[str, Any]], pos: int
+    ) -> tuple[list[list[Condition]], int]:
+        """Parse OR-separated and-expressions; union of their DNF groups."""
+        result, pos = self._parse_and_expr(tokens, pos)
+
+        while pos < len(tokens) and tokens[pos][0] == 'OR':
+            pos += 1
+            rhs, pos = self._parse_and_expr(tokens, pos)
+            if len(result) + len(rhs) > self.MAX_OR_GROUPS:
+                raise self._too_complex_error()
+            result = result + rhs
+
+        return result, pos
+
+    def _parse_and_expr(
+        self, tokens: list[tuple[str, Any]], pos: int
+    ) -> tuple[list[list[Condition]], int]:
+        """Parse a run of unary terms; AND them via DNF cross product."""
+        result: list[list[Condition]] = []
+
+        while pos < len(tokens) and tokens[pos][0] not in ('OR', 'RPAREN'):
+            term, pos = self._parse_unary(tokens, pos)
+            if not term:
+                continue
+            result = term if not result else self._cross_product(result, term)
+
+        return result, pos
+
+    def _parse_unary(
+        self, tokens: list[tuple[str, Any]], pos: int
+    ) -> tuple[list[list[Condition]], int]:
+        """Parse an optionally negated primary."""
+        negations = 0
+        while pos < len(tokens) and tokens[pos][0] == 'NEGATION':
+            negations += 1
+            pos += 1
+        negated = negations % 2 == 1
+
+        # Dangling '-' at end of input or before OR/')' — nothing to negate
+        if pos >= len(tokens) or tokens[pos][0] in ('OR', 'RPAREN'):
+            return [], pos
+
+        token_type, value = tokens[pos]
+
+        if token_type == 'LPAREN':
+            inner, pos = self._parse_group(tokens, pos)
+            return (self._negate_dnf(inner) if negated else inner), pos
+
+        # Leaf condition: negation applies via the filter key (type -> type_not)
+        filter_key = self._get_filter_key(token_type, negated)
+        filter_value = self._get_filter_value(token_type, value)
+        pos += 1
+
+        if filter_key is None or filter_value is None:
+            return [], pos
+
+        return [[(filter_key, filter_value)]], pos
+
+    def _parse_group(
+        self, tokens: list[tuple[str, Any]], pos: int
+    ) -> tuple[list[list[Condition]], int]:
+        """Parse a parenthesized group starting at an LPAREN token."""
+        pos += 1  # consume LPAREN
+        inner, pos = self._parse_or_expr(tokens, pos)
+
+        if pos >= len(tokens) or tokens[pos][0] != 'RPAREN':
+            raise QueryError(
+                "Unbalanced parentheses: missing closing ')'",
+                hint="Check that all opening parentheses have matching closing parentheses",
+                supported_syntax=SYNTAX_SUMMARY,
+            )
+
+        return inner, pos + 1  # consume RPAREN
+
+    def _cross_product(
+        self, left: list[list[Condition]], right: list[list[Condition]]
+    ) -> list[list[Condition]]:
+        """AND two DNFs: (A OR B)(C OR D) -> AC OR AD OR BC OR BD."""
+        if len(left) * len(right) > self.MAX_OR_GROUPS:
+            raise self._too_complex_error()
+        return [lg + rg for lg in left for rg in right]
+
+    def _negate_dnf(self, dnf: list[list[Condition]]) -> list[list[Condition]]:
+        """Negate a DNF via De Morgan, returning DNF.
+
+        NOT(G1 OR G2) = NOT(G1) AND NOT(G2), and NOT(a AND b) = NOT a OR NOT b,
+        so each group becomes an OR of its negated conditions and the results
+        are AND-ed back together with the cross product.
+        """
+        result: list[list[Condition]] = []
+        for group in dnf:
+            negated_group = [[self._negate_condition(cond)] for cond in group]
+            if len(negated_group) > self.MAX_OR_GROUPS:
+                raise self._too_complex_error()
+            result = negated_group if not result else self._cross_product(result, negated_group)
+        return result
+
+    @staticmethod
+    def _negate_condition(condition: Condition) -> Condition:
+        """Toggle the _not suffix on a condition's filter key.
+
+        Contract: this is only a correct De Morgan step if the store renders
+        every ``<key>_not`` filter as the exact logical complement of
+        ``<key>`` over that filter's applicable domain (NULL-column rows
+        included, via the IS NULL guards in the _not helpers). Any new filter
+        added to the store must keep that complement property, or group
+        negation of that filter silently returns wrong results.
+        """
+        key, value = condition
+        if key.endswith("_not"):
+            return key[: -len("_not")], value
+        return f"{key}_not", value
+
+    @staticmethod
+    def _too_complex_error() -> QueryError:
+        return QueryError(
+            f"Query too complex: expands to more than {QueryParser.MAX_OR_GROUPS} OR groups",
+            hint="Reduce the number of OR terms, parenthesized groups, or negated groups",
         )
 
     def _get_filter_key(self, token_type: str, negated: bool) -> str | None:

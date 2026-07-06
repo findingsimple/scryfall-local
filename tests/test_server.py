@@ -938,3 +938,57 @@ class TestServerBackgroundRefresh:
                 # Only 1 card should be in the database (malformed one skipped)
                 status = await server.call_tool("data_status", {})
                 assert status["card_count"] == 1
+
+
+class TestRefreshDataType:
+    """Refresh must preserve the cached bulk data type."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_preserves_cached_data_type(self):
+        """Refresh re-downloads the type in metadata, not a hardcoded default.
+
+        Regression test: _do_refresh used to hardcode "oracle_cards", so a
+        refresh silently replaced an all_cards database with the much smaller
+        oracle_cards dataset.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Existing cache metadata says the user imported all_cards
+            (tmpdir_path / "metadata.json").write_text(json.dumps({
+                "type": "all_cards",
+                "downloaded_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "card_count": 1,
+                "filename": "all-cards.json",
+            }))
+
+            bulk_data_path = tmpdir_path / "all-cards.json"
+            with open(bulk_data_path, "w") as f:
+                json.dump([{"id": "refresh-type-1", "name": "Refresh Type Card"}], f)
+
+            with ScryfallServer(tmpdir_path) as server:
+                mock_download = AsyncMock(return_value=bulk_data_path)
+                with patch.object(
+                    server._data_manager,
+                    "is_cache_stale",
+                    new=AsyncMock(return_value=True),
+                ), patch.object(
+                    server._data_manager,
+                    "download_bulk_data",
+                    new=mock_download,
+                ):
+                    result = await server.call_tool("refresh_data", {})
+                    assert result["status"] == "downloading"
+
+                    # Wait for refresh to complete (with timeout)
+                    for _ in range(50):
+                        await asyncio.sleep(0.1)
+                        if server._refresh_status in ("completed", "idle") or \
+                           server._refresh_status.startswith("error:"):
+                            break
+
+                    assert server._refresh_status == "completed", \
+                        f"Refresh failed with status: {server._refresh_status}"
+
+                mock_download.assert_called_once_with("all_cards")

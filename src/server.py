@@ -462,8 +462,10 @@ class ScryfallServer:
         try:
             self._refresh_status = "downloading"
 
-            # Download bulk data
-            file_path = await self._data_manager.download_bulk_data("oracle_cards")
+            # Download the same bulk data type as the current cache, so a
+            # refresh never silently replaces e.g. all_cards with oracle_cards
+            data_type = self._data_manager.get_cached_data_type()
+            file_path = await self._data_manager.download_bulk_data(data_type)
 
             self._refresh_status = "importing"
 

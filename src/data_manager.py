@@ -391,6 +391,16 @@ class DataManager:
                 pass
             raise
 
+    def get_cached_data_type(self) -> str:
+        """Get the bulk data type of the currently cached data.
+
+        Returns:
+            Data type from metadata (e.g. "all_cards"), or "oracle_cards"
+            if no metadata exists yet
+        """
+        metadata = self._load_metadata() or {}
+        return metadata.get("type", "oracle_cards")
+
     async def is_cache_stale(self) -> bool:
         """Check if local cache is stale compared to server.
 

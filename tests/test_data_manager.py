@@ -832,3 +832,20 @@ class TestRetryJitter:
                 # Jitter range should scale with base_delay
                 from unittest.mock import call
                 assert mock_uniform.call_args_list == [call(0, 1), call(0, 2)]
+
+
+class TestGetCachedDataType:
+    """Test reading the cached bulk data type from metadata."""
+
+    def test_defaults_to_oracle_cards_without_metadata(self):
+        """Should default to oracle_cards when no metadata exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = DataManager(Path(tmpdir))
+            assert manager.get_cached_data_type() == "oracle_cards"
+
+    def test_reads_type_from_metadata(self):
+        """Should return the data type recorded in metadata."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = DataManager(Path(tmpdir))
+            (Path(tmpdir) / "metadata.json").write_text('{"type": "all_cards"}')
+            assert manager.get_cached_data_type() == "all_cards"

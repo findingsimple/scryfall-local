@@ -79,7 +79,7 @@ When negating color or color identity filters, the behavior is as follows:
 | `-c:urg` | NOT (blue AND red AND green) | Cards missing ANY of U, R, or G |
 | `-id:esper` | NOT (white AND blue AND black) | Cards missing ANY of W, U, or B in identity |
 
-**Important:** Negation excludes cards that have ANY of the specified colors, not cards that have ALL of them. This means:
+**Important:** Negation is the exact logical complement of the positive filter, including comparison operators (`-c<=wu` means "not a subset of white/blue"). For multiple colors this means:
 - `-c:urg` returns cards that are NOT blue OR NOT red OR NOT green (i.e., missing at least one)
 - To find cards that aren't exactly Temur-colored, use a different approach
 

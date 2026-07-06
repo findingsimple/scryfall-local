@@ -629,10 +629,16 @@ class TestCardStoreORQueries:
 
             store.close()
 
-    def test_or_query_empty_groups(self):
-        """Should handle empty or_groups gracefully."""
+    def test_or_query_empty_groups(self, sample_cards: list[dict[str, Any]]):
+        """Empty or_groups means no conditions: matches everything, no crash.
+
+        Previously asserted against an empty database, which passed
+        regardless of the semantics. Pin the actual behavior: a degenerate
+        hand-built query with no groups falls through to an unfiltered scan.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             store = CardStore(Path(tmpdir) / "cards.db")
+            store.insert_cards(sample_cards)
 
             parsed = ParsedQuery(
                 filters={},
@@ -641,8 +647,8 @@ class TestCardStoreORQueries:
                 raw_query="",
             )
 
-            results = store.execute_query(parsed)
-            assert results == []
+            results = store.execute_query(parsed, limit=100)
+            assert len(results) == len(sample_cards)
 
             store.close()
 
