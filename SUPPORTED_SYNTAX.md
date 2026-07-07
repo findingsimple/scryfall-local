@@ -8,11 +8,15 @@ This document describes the query syntax supported by the Scryfall Local MCP ser
 
 | Syntax | Description | Example |
 |--------|-------------|---------|
-| `"card name"` | Exact name match (case-insensitive) | `"Lightning Bolt"` |
-| `'card name'` | Exact name match (single quotes) | `'Ach! Hans, Run!'` |
-| `!"card name"` | Strict exact match (case-sensitive) | `!"Lightning Bolt"` |
-| `!'card name'` | Strict exact match (single quotes) | `!'Question Elemental?'` |
-| `word` | Partial name match | `bolt` |
+| `word` | Substring name match | `bolt` |
+| `"card name"` | Substring match — quotes just group spaces/punctuation | `"lightning bo"` |
+| `'card name'` | Substring match (single quotes, for `!?()` in names) | `'Ach! Hans, Run!'` |
+| `!"card name"` | Exact name match (case-insensitive) | `!"Lightning Bolt"` |
+| `!'card name'` | Exact name match (single quotes) | `!'Question Elemental?'` |
+
+All name matching is case-insensitive, matching Scryfall: quoted text is a
+substring search (`"ancestral"` matches Ancestral Recall), and only the
+`!"..."` form requires the full exact name.
 
 **Quote Style Tips:**
 - Use double quotes `"..."` for names with apostrophes: `"Urza's Tower"`
@@ -36,6 +40,7 @@ For `!`, `?`, `()`, or `:` in names, use quotes: `'Question Elemental?'`
 | `c:color` | Cards with this color | `c:blue`, `c:u` |
 | `c:colorless` | Colorless cards | `c:c`, `c:colorless` |
 | `c:multicolor` | Multiple color symbols | `c:urg` (blue, red, green) |
+| `c=colors` | Exactly these colors, no others | `c=rg` (red-green only, excludes Jund cards) |
 | `c>=colors` | At least these colors | `c>=rg` (red and green, possibly more) |
 | `c<=colors` | At most these colors | `c<=w` (white or colorless only) |
 | `c>colors` | Strict superset (has all + more) | `c>rg` (RG plus at least one more color) |

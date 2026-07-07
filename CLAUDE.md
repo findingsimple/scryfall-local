@@ -75,9 +75,9 @@ uv run pytest tests/test_query_parser.py   # Single file
 ## Query Syntax
 
 Supported Scryfall syntax:
-- **Name**: `"Lightning Bolt"` (exact), `'Ach! Hans, Run!'` (single quotes for `!?()`)
-- **Name**: `bolt` (partial), `Séance` (accented chars), `Urza's` (apostrophes)
-- **Colors**: `c:blue`, `c:urg`, `c>=rg`
+- **Name**: `bolt` / `"lightning bolt"` (substring), `!"Lightning Bolt"` (exact, case-insensitive)
+- **Name**: `'Ach! Hans, Run!'` (single quotes for `!?()`), `Séance` (accented chars), `Urza's` (apostrophes)
+- **Colors**: `c:blue`, `c:urg` (at least), `c=rg` (exactly), `c>=rg`
 - **Mana Value**: `cmc:3`, `cmc>=5`, `cmc<2`
 - **Type**: `t:creature`, `t:"legendary creature"`
 - **Oracle Text**: `o:flying`, `o:"enters the battlefield"`

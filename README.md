@@ -218,7 +218,7 @@ include every field.
 See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 
 **Supported (25 filter types):**
-- Name: `"Lightning Bolt"` (exact), `'Ach! Hans, Run!'` (single quotes), `bolt` (partial), `Séance` (accented)
+- Name: `bolt` / `"lightning bolt"` (substring), `!"Lightning Bolt"` (exact), `'Ach! Hans, Run!'` (single quotes), `Séance` (accented)
 - Colors: `c:blue`, `c:urg`, `c>=rg`, `c<=w`, `c>rg`, `c<rg`
 - Color Identity: `id:esper`, `ci:rg`, `id<=rg`, `id>rg`
 - Mana Value: `cmc:3`, `cmc>=5`, `mv<2`

@@ -346,6 +346,49 @@ class TestColorNegation:
         assert not set(positive) & set(negative)
 
 
+class TestQuotedNameSemantics:
+    """Quoted names are substring matches (Scryfall); !"..." is the exact form."""
+
+    def test_quoted_name_is_substring(self, search):
+        # "Bolt" is a substring of Bolt Hound — Scryfall quotes are not exact
+        assert search('"Bolt"') == ["Bolt Hound"]
+
+    def test_quoted_name_is_case_insensitive(self, search):
+        assert search('"bolt"') == ["Bolt Hound"]
+
+    def test_quoted_phrase_with_space(self, search):
+        assert search('"cloud sprite"') == ["Cloud Sprite"]
+
+    def test_quoted_partial_word(self, search):
+        # substring, not word match: "loud" is inside Cloud Sprite
+        assert search('"loud"') == ["Cloud Sprite"]
+
+    def test_strict_name_is_exact(self, search):
+        assert search('!"Alpha Strike"') == ["Alpha Strike"]
+
+    def test_strict_name_is_not_substring(self, search):
+        assert search('!"Alpha"') == []
+
+    def test_strict_name_is_case_insensitive(self, search):
+        # Scryfall: "If you prefix words or quoted phrases with ! you will
+        # find cards with that exact name only. This is still case-insensitive."
+        assert search('!"alpha strike"') == ["Alpha Strike"]
+
+    def test_negated_quoted_name(self, search):
+        assert search('-"bolt"') == [n for n in ALL_NAMES if n != "Bolt Hound"]
+
+    def test_negated_strict_name(self, search):
+        assert search('-!"alpha strike"') == [
+            n for n in ALL_NAMES if n != "Alpha Strike"
+        ]
+
+    def test_strict_partition_universe(self, search):
+        positive = search('!"Alpha Strike"')
+        negative = search('-(!"Alpha Strike")')
+        assert sorted(positive + negative) == ALL_NAMES
+        assert not set(positive) & set(negative)
+
+
 class TestNegationWithFts:
     """Negated conditions mixed with positive FTS-eligible filters."""
 

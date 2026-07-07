@@ -962,19 +962,15 @@ class CardStore:
         conditions: list[str] = []
         params: list[Any] = []
 
-        # Name filters
-        if "name_exact" in filters:
-            conditions.append("name = ?")
-            params.append(filters["name_exact"])
-        if "name_exact_not" in filters:
-            conditions.append("name != ?")
-            params.append(filters["name_exact_not"])
+        # Name filters. !"..." is a case-insensitive exact match (Scryfall:
+        # "you will find cards with that exact name only. This is still
+        # case-insensitive."); quoted names parse to name_partial below.
         if "name_strict" in filters:
-            conditions.append("name = ? COLLATE BINARY")
-            params.append(filters["name_strict"])
+            conditions.append("LOWER(name) = ?")
+            params.append(filters["name_strict"].lower())
         if "name_strict_not" in filters:
-            conditions.append("NOT (name = ? COLLATE BINARY)")
-            params.append(filters["name_strict_not"])
+            conditions.append("NOT (LOWER(name) = ?)")
+            params.append(filters["name_strict_not"].lower())
 
         # Partial name filters (LIKE matching)
         self._add_like_filter(filters, "name_partial", "name", conditions, params)

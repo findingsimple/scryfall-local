@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 # Supported syntax for error messages
 # Brief summary for tool descriptions
 SYNTAX_SUMMARY = (
-    "Supports: name, colors (c:blue), mana value (cmc:3), mana cost (m:{R}{R}), type (t:creature), "
+    "Supports: name (bolt or \"lightning bolt\" = substring, !\"Exact Name\" = exact), "
+    "colors (c:blue, c=rg exactly), mana value (cmc:3), mana cost (m:{R}{R}), type (t:creature), "
     "oracle text (o:flying), set (set:neo), rarity (r:mythic), format (f:modern), "
     "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023), "
     "produces token (pt:zombie). Boolean operators: implicit AND, OR, - (negation), (parentheses)."
@@ -24,7 +25,7 @@ SYNTAX_SUMMARY = (
 
 # Detailed list for error messages
 SUPPORTED_SYNTAX = [
-    'name search: "Lightning Bolt" (exact), bolt (partial), !"Exact Name" (strict)',
+    'name search: bolt or "lightning bolt" (substring match), !"Exact Name" (exact match, case-insensitive)',
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
     "color identity: id:wubrg, identity:esper, ci:rg (for Commander)",
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
@@ -608,7 +609,10 @@ class QueryParser:
             'ARTIST': 'artist',
             'YEAR': 'year',
             'MANA': 'mana',
-            'EXACT_NAME': 'name_exact',
+            # Quoted names are substring matches like bare words (Scryfall
+            # semantics — quotes only group spaces/punctuation); !"..." is
+            # the exact-name form.
+            'EXACT_NAME': 'name_partial',
             'STRICT_NAME': 'name_strict',
             'PARTIAL_NAME': 'name_partial',
         }

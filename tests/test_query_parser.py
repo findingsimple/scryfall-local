@@ -7,12 +7,12 @@ from src.query_parser import QueryParser, ParsedQuery, QueryError
 class TestQueryParserBasicName:
     """Test name-based queries."""
 
-    def test_parse_exact_name_quoted(self):
-        """Exact name match with quotes."""
+    def test_parse_quoted_name_is_substring(self):
+        """Quoted names are substring matches (Scryfall semantics)."""
         parser = QueryParser()
         result = parser.parse('"Lightning Bolt"')
 
-        assert result.filters["name_exact"] == "Lightning Bolt"
+        assert result.filters["name_partial"] == ["Lightning Bolt"]
 
     def test_parse_partial_name_unquoted(self):
         """Partial name match without quotes."""
@@ -103,24 +103,24 @@ class TestQueryParserBasicName:
         parser = QueryParser()
 
         result = parser.parse("'Ach! Hans, Run!'")
-        assert result.filters["name_exact"] == "Ach! Hans, Run!"
+        assert result.filters["name_partial"] == ["Ach! Hans, Run!"]
 
         result = parser.parse("'Question Elemental?'")
-        assert result.filters["name_exact"] == "Question Elemental?"
+        assert result.filters["name_partial"] == ["Question Elemental?"]
 
     def test_parse_single_quoted_with_parentheses(self):
         """Single-quoted name with parentheses."""
         parser = QueryParser()
         result = parser.parse("'B.F.M. (Big Furry Monster)'")
 
-        assert result.filters["name_exact"] == "B.F.M. (Big Furry Monster)"
+        assert result.filters["name_partial"] == ["B.F.M. (Big Furry Monster)"]
 
     def test_parse_single_quoted_with_filter(self):
         """Single-quoted name combined with filter."""
         parser = QueryParser()
         result = parser.parse("'Ach! Hans, Run!' t:creature")
 
-        assert result.filters["name_exact"] == "Ach! Hans, Run!"
+        assert result.filters["name_partial"] == ["Ach! Hans, Run!"]
         assert result.filters["type"] == ["creature"]
 
     def test_parse_strict_single_quoted(self):
