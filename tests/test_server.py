@@ -652,6 +652,68 @@ class TestServerResponseFormat:
                 assert "supported_syntax" in result or "hint" in result
 
 
+class TestEmptyDatabaseHint:
+    """An empty database should be surfaced, not read as 'card doesn't exist'."""
+
+    @pytest.mark.asyncio
+    async def test_search_on_empty_db_includes_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                result = await server.call_tool(
+                    "search_cards", {"query": "Lightning Bolt"}
+                )
+
+                assert result["total_count"] == 0
+                assert "warning" in result
+                assert "refresh_data" in result["warning"]
+
+    @pytest.mark.asyncio
+    async def test_get_card_on_empty_db_includes_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                result = await server.call_tool(
+                    "get_card", {"name": "Lightning Bolt"}
+                )
+
+                assert "error" in result
+                assert "warning" in result
+                assert "refresh_data" in result["warning"]
+
+    @pytest.mark.asyncio
+    async def test_batch_on_empty_db_includes_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                result = await server.call_tool(
+                    "get_cards_batch", {"names": ["Lightning Bolt"]}
+                )
+
+                assert result["not_found"] == ["Lightning Bolt"]
+                assert "warning" in result
+                assert "refresh_data" in result["warning"]
+
+    @pytest.mark.asyncio
+    async def test_no_warning_on_populated_db(self, sample_cards: list[dict[str, Any]]):
+        """A populated DB must not warn — even for queries with no matches."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                search = await server.call_tool(
+                    "search_cards", {"query": "Nonexistent Card XYZ"}
+                )
+                assert "warning" not in search
+
+                card = await server.call_tool(
+                    "get_card", {"name": "Nonexistent Card XYZ"}
+                )
+                assert "warning" not in card
+
+                batch = await server.call_tool(
+                    "get_cards_batch", {"names": ["Nonexistent Card XYZ"]}
+                )
+                assert "warning" not in batch
+
+
 class TestServerLowLevel:
     """Test low-level MCP server functionality."""
 

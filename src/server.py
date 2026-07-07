@@ -63,6 +63,9 @@ class ScryfallServer:
         self._refresh_task: asyncio.Task | None = None
         self._refresh_status: str = "idle"
         self._refresh_lock = asyncio.Lock()  # Serializes store access during swap
+        # Once the DB is seen non-empty it stays that way (refresh only adds
+        # data), so the empty-DB check short-circuits after the first hit.
+        self._db_known_nonempty = False
 
     def _get_store(self) -> CardStore:
         """Get or create card store."""
@@ -284,6 +287,24 @@ class ScryfallServer:
         "rarity",
     )
 
+    def _empty_db_warning(self, store: CardStore) -> str | None:
+        """Warn when the card database is empty.
+
+        Without this, an empty DB makes every lookup return "not found" and
+        the agent concludes the card doesn't exist.
+        """
+        if self._db_known_nonempty:
+            return None
+        if store.get_card_count() > 0:
+            self._db_known_nonempty = True
+            return None
+        return (
+            "The card database is empty — no card data has been imported, so "
+            "every lookup will come back empty. Run the refresh_data tool, or "
+            "from the command line: `uv run python -m src.cli download` then "
+            "`uv run python -m src.cli import`."
+        )
+
     def _compact_card(self, card: dict[str, Any]) -> dict[str, Any]:
         """Project a card down to COMPACT_FIELDS, dropping null values."""
         return {
@@ -322,18 +343,22 @@ class ScryfallServer:
             store = self._get_store()
             cards = store.execute_query(parsed, limit=limit, offset=offset)
             total_count = store.count_matches(parsed)
+            warning = self._empty_db_warning(store)
 
         if not verbose:
             cards = [self._compact_card(card) for card in cards]
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
-        return {
+        result: dict[str, Any] = {
             "cards": cards,
             "total_count": total_count,
             "query_time_ms": elapsed_ms,
             "offset": offset,
         }
+        if warning:
+            result["warning"] = warning
+        return result
 
     async def _get_card(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Get a single card.
@@ -359,14 +384,18 @@ class ScryfallServer:
                 card = store.get_card_by_name(name)
             else:
                 card = store.get_card_by_id(card_id)
+            warning = self._empty_db_warning(store)
 
         if card:
             return card
         else:
-            return {
+            result = {
                 "error": "Card not found",
                 "hint": f"Try searching with: search_cards query=\"{name or card_id}\"",
             }
+            if warning:
+                result["warning"] = warning
+            return result
 
     async def _get_cards_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Get multiple cards.
@@ -419,10 +448,14 @@ class ScryfallServer:
                     else:
                         not_found.append(card_id)
 
+            warning = self._empty_db_warning(store)
+
         result: dict[str, Any] = {
             "found": found,
             "not_found": not_found,
         }
+        if warning:
+            result["warning"] = warning
 
         if truncated:
             result["truncated"] = True
