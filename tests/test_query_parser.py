@@ -1287,3 +1287,92 @@ class TestQueryLengthLimit:
         result = parser.parse(query)
         # Verify the full input was parsed as a name filter, not silently truncated
         assert result.filters["name_partial"] == [query]
+
+
+class TestIsFilter:
+    """is: filters expand to existing layout/type conditions."""
+
+    def test_is_dfc_expands_to_layouts(self):
+        parser = QueryParser()
+        result = parser.parse("is:dfc")
+
+        assert result.groups == [[("layout", "transform")], [("layout", "modal_dfc")]]
+
+    def test_is_split_and_adventure(self):
+        parser = QueryParser()
+        assert parser.parse("is:split").groups == [[("layout", "split")]]
+        assert parser.parse("is:adventure").groups == [[("layout", "adventure")]]
+
+    def test_is_permanent_expands_to_types(self):
+        parser = QueryParser()
+        result = parser.parse("is:permanent")
+
+        types = sorted(group[0][1] for group in result.groups)
+        assert types == ["artifact", "battle", "creature", "enchantment", "land", "planeswalker"]
+        assert all(group[0][0] == "type" for group in result.groups)
+
+    def test_is_spell_is_not_land(self):
+        parser = QueryParser()
+        result = parser.parse("is:spell")
+
+        assert result.groups == [[("type_not", "land")]]
+
+    def test_negated_is_dfc(self):
+        parser = QueryParser()
+        result = parser.parse("-is:dfc")
+
+        # De Morgan: NOT(transform OR mdfc) = not-transform AND not-mdfc
+        assert result.groups == [
+            [("layout_not", "transform"), ("layout_not", "modal_dfc")]
+        ]
+
+    def test_is_combines_with_other_filters(self):
+        parser = QueryParser()
+        result = parser.parse("is:dfc t:creature")
+
+        assert result.groups == [
+            [("layout", "transform"), ("type", "creature")],
+            [("layout", "modal_dfc"), ("type", "creature")],
+        ]
+
+    def test_unsupported_is_value_raises(self):
+        parser = QueryParser()
+        with pytest.raises(QueryError, match="is:commander"):
+            parser.parse("is:commander")
+
+        try:
+            parser.parse("is:commander")
+        except QueryError as e:
+            assert "dfc" in e.hint  # hint lists the supported values
+
+    def test_is_case_insensitive(self):
+        parser = QueryParser()
+        assert parser.parse("IS:DFC").groups == parser.parse("is:dfc").groups
+
+
+class TestUnknownFilterKeyword:
+    """Unknown word:value filters raise a helpful error, not a name search."""
+
+    def test_unknown_keyword_raises(self):
+        parser = QueryParser()
+        with pytest.raises(QueryError, match="[Uu]nknown filter"):
+            parser.parse("foo:bar")
+
+    def test_unknown_keyword_error_names_the_keyword(self):
+        parser = QueryParser()
+        try:
+            parser.parse("foo:bar")
+        except QueryError as e:
+            assert "foo" in e.message
+
+    def test_unknown_keyword_hint_suggests_quoting(self):
+        parser = QueryParser()
+        try:
+            parser.parse("banding:yes")
+        except QueryError as e:
+            assert "quote" in e.hint.lower()
+
+    def test_unknown_keyword_with_quoted_value(self):
+        parser = QueryParser()
+        with pytest.raises(QueryError, match="[Uu]nknown filter"):
+            parser.parse('frame:"future shifted"')

@@ -398,6 +398,33 @@ class TestQuotedNameSemantics:
         assert not set(positive) & set(negative)
 
 
+class TestIsFilterBehaviour:
+    """is: filters run end-to-end through the layout/type machinery."""
+
+    def test_is_permanent(self, search):
+        # Everything except the instant
+        assert search("is:permanent") == [n for n in ALL_NAMES if n != "Alpha Strike"]
+
+    def test_is_spell(self, search):
+        # Everything except the land
+        assert search("is:spell") == [n for n in ALL_NAMES if n != "Barren Field"]
+
+    def test_negated_is_permanent(self, search):
+        assert search("-is:permanent") == ["Alpha Strike"]
+
+    def test_is_spell_partitions_universe(self, search):
+        positive = search("is:spell")
+        negative = search("-(is:spell)")
+        assert sorted(positive + negative) == ALL_NAMES
+        assert not set(positive) & set(negative)
+
+    def test_is_permanent_partitions_universe(self, search):
+        positive = search("is:permanent")
+        negative = search("-(is:permanent)")
+        assert sorted(positive + negative) == ALL_NAMES
+        assert not set(positive) & set(negative)
+
+
 class TestNegationWithFts:
     """Negated conditions mixed with positive FTS-eligible filters."""
 

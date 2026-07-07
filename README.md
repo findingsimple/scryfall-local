@@ -235,6 +235,7 @@ See [SUPPORTED_SYNTAX.md](SUPPORTED_SYNTAX.md) for full documentation.
 - Watermark: `wm:phyrexian`, `watermark:selesnya`
 - Layout: `layout:transform`, `layout:adventure`, `layout:modal_dfc`
 - Produces Token: `pt:zombie`, `produces_token:"Goblin Token"`
+- Card Properties: `is:dfc`, `is:mdfc`, `is:split`, `is:adventure`, `is:permanent`, `is:spell`
 - Power: `pow:3`, `pow>=4`, `power<2`
 - Toughness: `tou:4`, `tou>=5`, `toughness<3`
 - Loyalty: `loy:3`, `loy>=4`, `loyalty<5`

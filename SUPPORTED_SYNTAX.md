@@ -204,6 +204,26 @@ m:{W}{W} t:creature
 - `r` or `rare`
 - `m` or `mythic`
 
+### Card Properties (is:)
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `is:dfc` | Double-faced cards (transform or modal DFC) | `is:dfc t:creature` |
+| `is:transform` | Transform cards only | `is:transform` |
+| `is:mdfc` | Modal double-faced cards only | `is:mdfc` |
+| `is:split` | Split cards | `is:split` |
+| `is:adventure` | Adventure cards | `is:adventure` |
+| `is:flip` | Flip cards (Kamigawa style) | `is:flip` |
+| `is:meld` | Meld cards | `is:meld` |
+| `is:permanent` | Permanent types (artifact, battle, creature, enchantment, land, planeswalker) | `is:permanent c:u` |
+| `is:spell` | Anything that isn't a land | `is:spell cmc<=1` |
+
+`is:` values expand to layout/type conditions, so they combine with all other
+filters and negate cleanly (`-is:dfc`). Unsupported `is:` values (e.g.
+`is:commander`) raise an error listing the supported set. Unknown filter
+keywords in general (`foo:bar`) error with a hint instead of being silently
+treated as a name search.
+
 ### Boolean Operators
 
 | Syntax | Description | Example |

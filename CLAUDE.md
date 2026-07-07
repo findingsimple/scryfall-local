@@ -85,6 +85,7 @@ Supported Scryfall syntax:
 - **Rarity**: `r:mythic`, `r:rare`
 - **Layout**: `layout:transform`, `layout:adventure`, `layout:modal_dfc`
 - **Produces Token**: `pt:zombie`, `produces_token:"Goblin Token"`
+- **Card Properties**: `is:dfc`, `is:mdfc`, `is:split`, `is:adventure`, `is:permanent`, `is:spell`
 - **Boolean**: implicit AND, `OR`, `-` (negation)
 
 See `SUPPORTED_SYNTAX.md` for full documentation.

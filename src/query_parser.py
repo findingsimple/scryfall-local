@@ -20,7 +20,8 @@ SYNTAX_SUMMARY = (
     "colors (c:blue, c=rg exactly), mana value (cmc:3), mana cost (m:{R}{R}), type (t:creature), "
     "oracle text (o:flying), set (set:neo), rarity (r:mythic), format (f:modern), "
     "power/toughness (pow:3, tou:4), keywords (kw:flying), artist (a:name), year (year:2023), "
-    "produces token (pt:zombie). Boolean operators: implicit AND, OR, - (negation), (parentheses)."
+    "produces token (pt:zombie), properties (is:dfc, is:permanent, is:spell). "
+    "Boolean operators: implicit AND, OR, - (negation), (parentheses)."
 )
 
 # Detailed list for error messages
@@ -45,6 +46,7 @@ SUPPORTED_SYNTAX = [
     "collector number: cn:123, cn:1a (find specific printings)",
     "price: usd<1, usd>=10, eur<5",
     "produces token: pt:zombie, produces_token:\"Goblin Token\" (find token creators)",
+    "card properties: is:dfc, is:transform, is:mdfc, is:split, is:adventure, is:flip, is:meld, is:permanent, is:spell",
     "boolean: implicit AND, OR, - (negation), parentheses",
 ]
 
@@ -275,6 +277,14 @@ TOKEN_PATTERNS = [
     (r"!'([^']+)'", 'STRICT_NAME'),  # Single-quote variant
     (r'"([^"]+)"', 'EXACT_NAME'),
     (r"'([^']+)'", 'EXACT_NAME'),  # Single-quote variant for names with special chars
+    # Card property checks (is:dfc, is:permanent, ...) — expanded by the
+    # parser into layout/type conditions
+    (r'is:([a-zA-Z_]+)', 'IS'),
+    # Catch-all for unrecognized filter keywords (foo:bar). Must stay after
+    # every real keyword pattern and before PARTIAL_NAME: without it the
+    # keyword would tokenize as a partial name and then fail on the ':' with
+    # an unhelpful "unexpected character" error.
+    (r'([a-zA-Z_]+):("[^"]*"|\'[^\']*\'|[^\s()]+)', 'UNKNOWN_FILTER'),
     # Partial name allows:
     # - ASCII and accented Latin letters (a-zA-Z plus \u00C0-\u024F for é, û, ö, etc.)
     # - Numbers, underscores, hyphens, apostrophes
@@ -341,8 +351,26 @@ class QueryParser:
     _SIMPLE_VALUE_TOKENS = frozenset({
         'TYPE', 'ORACLE', 'SET', 'RARITY', 'FORMAT', 'KEYWORD', 'FLAVOR', 'ARTIST',
         'FULL_ORACLE', 'BANNED', 'BLOCK', 'PRODUCES', 'WATERMARK', 'LAYOUT',
-        'PRODUCES_TOKEN', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'
+        'PRODUCES_TOKEN', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME', 'IS'
     })
+
+    # is: filters, expanded to DNF over existing layout/type conditions so
+    # negation and the store need nothing new. Groups are OR-ed; conditions
+    # within a group are AND-ed.
+    _IS_EXPANSIONS: dict[str, list[list[Condition]]] = {
+        'dfc': [[('layout', 'transform')], [('layout', 'modal_dfc')]],
+        'transform': [[('layout', 'transform')]],
+        'mdfc': [[('layout', 'modal_dfc')]],
+        'split': [[('layout', 'split')]],
+        'adventure': [[('layout', 'adventure')]],
+        'flip': [[('layout', 'flip')]],
+        'meld': [[('layout', 'meld')]],
+        'permanent': [
+            [('type', t)]
+            for t in ('artifact', 'battle', 'creature', 'enchantment', 'land', 'planeswalker')
+        ],
+        'spell': [[('type_not', 'land')]],
+    }
 
     def _tokenize(self, query: str) -> list[tuple[str, Any]]:
         """Tokenize query string."""
@@ -359,6 +387,16 @@ class QueryParser:
             for pattern, token_type in self._patterns:
                 match = pattern.match(query, pos)
                 if match:
+                    if token_type == 'UNKNOWN_FILTER':
+                        keyword = match.group(1)
+                        raise QueryError(
+                            f"Unknown filter keyword '{keyword}:'",
+                            hint=(
+                                f"'{keyword}:' is not a supported filter. To search "
+                                f"card names containing this text, put it in quotes: "
+                                f'"{match.group(0)}"'
+                            ),
+                        )
                     # Extract token value based on category
                     if token_type in self._OPERATOR_STRING_TOKENS:
                         tokens.append((token_type, (match.group(1), match.group(2))))
@@ -508,6 +546,21 @@ class QueryParser:
         if token_type == 'LPAREN':
             inner, pos = self._parse_group(tokens, pos)
             return (self._negate_dnf(inner) if negated else inner), pos
+
+        if token_type == 'IS':
+            expansion = self._IS_EXPANSIONS.get(value.lower())
+            if expansion is None:
+                raise QueryError(
+                    f"Unsupported is: filter 'is:{value}'",
+                    hint=(
+                        "Supported is: values: "
+                        + ", ".join(sorted(self._IS_EXPANSIONS))
+                    ),
+                )
+            pos += 1
+            # Fresh group lists — the expansion table must never be mutated
+            expansion = [list(group) for group in expansion]
+            return (self._negate_dnf(expansion) if negated else expansion), pos
 
         # Leaf condition: negation applies via the filter key (type -> type_not)
         filter_key = self._get_filter_key(token_type, negated)
