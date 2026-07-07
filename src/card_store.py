@@ -866,10 +866,19 @@ class CardStore:
 
         all_colors = {"W", "U", "B", "R", "G"}
 
-        if operator in (":", "=", ">="):
-            # Has at least these colors
+        if operator in (":", ">="):
+            # Has at least these colors (Scryfall: c: is equivalent to c>=)
             for c in colors:
                 conditions.append(f"{column} LIKE ?")
+                params.append(f'%"{c}"%')
+
+        elif operator == "=":
+            # Exactly these colors: all listed present, no others
+            for c in colors:
+                conditions.append(f"{column} LIKE ?")
+                params.append(f'%"{c}"%')
+            for c in all_colors - set(colors):
+                conditions.append(f"{column} NOT LIKE ?")
                 params.append(f'%"{c}"%')
 
         elif operator == "<=":

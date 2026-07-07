@@ -278,6 +278,32 @@ class TestNullColumnNegation:
         assert search("-ft:dragon") == ALL_NAMES
 
 
+class TestColorEquals:
+    """c= means exactly those colors (Scryfall); c: means at least (c>=)."""
+
+    def test_color_equals_is_exact(self, search):
+        # c=r matches mono-red only — Steam Djinn (UR) is excluded
+        assert search("c=r") == ["Alpha Strike", "Bolt Hound", "Ember Giant"]
+
+    def test_color_colon_is_at_least(self, search):
+        # c:r means "at least red" (Scryfall: c: is equivalent to c>=),
+        # so the UR card is included
+        assert search("c:r") == [
+            "Alpha Strike",
+            "Bolt Hound",
+            "Ember Giant",
+            "Steam Djinn",
+        ]
+
+    def test_color_equals_multicolor(self, search):
+        # c=ur matches exactly blue+red
+        assert search("c=ur") == ["Steam Djinn"]
+
+    def test_color_equals_no_exact_match(self, search):
+        # No card is exactly white+blue
+        assert search("c=wu") == []
+
+
 class TestColorNegation:
     """Color negation is the exact complement of the positive filter."""
 
@@ -297,6 +323,16 @@ class TestColorNegation:
             "Alpha Strike",
             "Bolt Hound",
             "Ember Giant",
+            "Steam Djinn",
+        ]
+
+    def test_negated_color_equals_is_exact_complement(self, search):
+        # -(c=r) = everything that is not exactly mono-red, including
+        # multicolor cards containing red and colorless cards
+        assert search("-(c=r)") == [
+            "Barren Field",
+            "Cloud Sprite",
+            "Dusk Angel",
             "Steam Djinn",
         ]
 
