@@ -586,26 +586,41 @@ class CardStore:
         return {card["id"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
 
     def get_cards_by_names(self, names: list[str]) -> dict[str, dict[str, Any]]:
-        """Get multiple cards by exact name in a single query.
+        """Get multiple cards by name, with the same fallbacks as get_card_by_name.
+
+        Exact matches resolve in a single query; misses fall back to a
+        per-name lookup (case-insensitive, then double-faced front face).
 
         Args:
-            names: List of exact card names
+            names: List of card names
 
         Returns:
-            Dictionary mapping card name to card dictionary
+            Dictionary keyed by the *requested* name string (not the stored
+            card name), so callers can match results to their input.
         """
         if not names:
             return {}
         placeholders = ", ".join("?" for _ in names)
         cursor = self._conn.cursor()
         cursor.execute(f"SELECT * FROM cards WHERE name IN ({placeholders})", names)
-        return {card["name"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
+        exact = {card["name"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
+        result = {}
+        for requested in names:
+            card = exact.get(requested) or self.get_card_by_name(requested)
+            if card:
+                result[requested] = card
+        return result
 
     def get_card_by_name(self, name: str) -> dict[str, Any] | None:
-        """Get card by exact name.
+        """Get card by name.
+
+        Lookup order: exact match, then case-insensitive match, then
+        double-faced front-face match ("Delver of Secrets" finds
+        "Delver of Secrets // Insectile Aberration"). Back-face names
+        are not matched.
 
         Args:
-            name: Exact card name
+            name: Card name (any casing; front face is enough for DFCs)
 
         Returns:
             Card dictionary or None if not found
@@ -613,6 +628,26 @@ class CardStore:
         cursor = self._conn.cursor()
         cursor.execute("SELECT * FROM cards WHERE name = ?", (name,))
         row = cursor.fetchone()
+        if row is None:
+            # Case-insensitive fallback (uses idx_name_lower)
+            cursor.execute(
+                "SELECT * FROM cards WHERE LOWER(name) = ? ORDER BY name LIMIT 1",
+                (name.lower(),),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            # Double-faced front-face fallback. Art-series cards
+            # ("Delver of Secrets // Delver of Secrets") would shadow the
+            # real card, so they're excluded; double-faced tokens lose to
+            # real cards sharing a front-face name.
+            pattern = _escape_like(name.lower()) + " //%"
+            cursor.execute(
+                "SELECT * FROM cards WHERE LOWER(name) LIKE ? ESCAPE '\\' "
+                "AND layout != 'art_series' "
+                "ORDER BY (layout = 'double_faced_token'), name LIMIT 1",
+                (pattern,),
+            )
+            row = cursor.fetchone()
         return self._row_to_dict(row) if row else None
 
     # -------------------------------------------------------------------------

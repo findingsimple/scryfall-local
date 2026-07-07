@@ -160,13 +160,16 @@ class ScryfallServer:
             ),
             Tool(
                 name="get_card",
-                description="Get a single Magic: The Gathering card by exact name or Scryfall ID.",
+                description="Get a single Magic: The Gathering card by name or Scryfall ID. "
+                "Name matching is case-insensitive; for double-faced cards the front-face "
+                "name is enough (e.g. 'Delver of Secrets').",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Exact card name (e.g., 'Lightning Bolt')",
+                            "description": "Card name, case-insensitive (e.g., 'Lightning Bolt'). "
+                            "Front-face name works for double-faced cards.",
                         },
                         "id": {
                             "type": "string",
@@ -185,7 +188,8 @@ class ScryfallServer:
                         "names": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of exact card names (max 50 combined with ids)",
+                            "description": "List of card names, case-insensitive; front-face "
+                            "names work for double-faced cards (max 50 combined with ids)",
                         },
                         "ids": {
                             "type": "array",

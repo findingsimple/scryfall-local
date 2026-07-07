@@ -2022,6 +2022,196 @@ class TestCardStoreBatchLookup:
             store.close()
 
 
+class TestNameLookupFallbacks:
+    """Case-insensitive and double-faced front-face name lookup fallbacks.
+
+    Lookup order: exact match, then case-insensitive match, then
+    front-face match for double-faced cards ("Delver of Secrets" finds
+    "Delver of Secrets // Insectile Aberration").
+    """
+
+    def test_get_card_by_name_case_insensitive(self, sample_cards: list[dict[str, Any]]):
+        """Lowercase and uppercase requests should find the card."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            card = store.get_card_by_name("lightning bolt")
+            assert card is not None
+            assert card["name"] == "Lightning Bolt"
+
+            card = store.get_card_by_name("LIGHTNING BOLT")
+            assert card is not None
+            assert card["name"] == "Lightning Bolt"
+
+            store.close()
+
+    def test_get_card_by_name_exact_match_takes_precedence(self):
+        """When two cards differ only by case, the exact match wins."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(
+                [
+                    {"id": "case-1", "name": "Test Card"},
+                    {"id": "case-2", "name": "test card"},
+                ]
+            )
+
+            card = store.get_card_by_name("test card")
+            assert card is not None
+            assert card["id"] == "case-2"
+
+            card = store.get_card_by_name("Test Card")
+            assert card is not None
+            assert card["id"] == "case-1"
+
+            store.close()
+
+    def test_get_card_by_name_dfc_front_face(self, double_faced_cards: list[dict[str, Any]]):
+        """Front-face name should find the full double-faced card."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+
+            card = store.get_card_by_name("Delver of Secrets")
+            assert card is not None
+            assert card["name"] == "Delver of Secrets // Insectile Aberration"
+
+            store.close()
+
+    def test_get_card_by_name_dfc_front_face_case_insensitive(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """Lowercase front-face name should also find the card."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+
+            card = store.get_card_by_name("delver of secrets")
+            assert card is not None
+            assert card["name"] == "Delver of Secrets // Insectile Aberration"
+
+            store.close()
+
+    def test_get_card_by_name_front_face_skips_art_series(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """Art-series cards ("Delver of Secrets // Delver of Secrets") must not
+        shadow the real card, even though they sort first alphabetically."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+            store.insert_cards(
+                [
+                    {
+                        "id": "art-series-delver",
+                        "name": "Delver of Secrets // Delver of Secrets",
+                        "layout": "art_series",
+                    }
+                ]
+            )
+
+            card = store.get_card_by_name("Delver of Secrets")
+            assert card is not None
+            assert card["name"] == "Delver of Secrets // Insectile Aberration"
+
+            store.close()
+
+    def test_get_card_by_name_front_face_prefers_real_card_over_token(self):
+        """Double-faced tokens lose to real cards sharing a front-face name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(
+                [
+                    {
+                        "id": "token-illusion",
+                        "name": "Illusion // Saproling",
+                        "layout": "double_faced_token",
+                    },
+                    {
+                        "id": "split-illusion",
+                        "name": "Illusion // Reality",
+                        "layout": "split",
+                    },
+                ]
+            )
+
+            card = store.get_card_by_name("Illusion")
+            assert card is not None
+            assert card["name"] == "Illusion // Reality"
+
+            store.close()
+
+    def test_get_card_by_name_back_face_not_matched(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """The fallback is front-face only; back-face names don't match."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+
+            assert store.get_card_by_name("Insectile Aberration") is None
+
+            store.close()
+
+    def test_get_card_by_name_like_wildcards_are_literal(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """LIKE wildcards in the requested name must not act as wildcards."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+
+            assert store.get_card_by_name("Delver_of_Secrets") is None
+            assert store.get_card_by_name("%") is None
+            assert store.get_card_by_name("Delver%") is None
+
+            store.close()
+
+    def test_get_cards_by_names_mixed_case(self, sample_cards: list[dict[str, Any]]):
+        """Batch lookup should be case-insensitive, keyed by requested name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(sample_cards)
+
+            result = store.get_cards_by_names(["lightning bolt", "COUNTERSPELL"])
+            assert len(result) == 2
+            assert result["lightning bolt"]["name"] == "Lightning Bolt"
+            assert result["COUNTERSPELL"]["name"] == "Counterspell"
+
+            store.close()
+
+    def test_get_cards_by_names_dfc_front_face(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """Batch lookup should resolve front-face names, keyed by requested name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cards.db"
+            store = CardStore(db_path)
+            store.insert_cards(double_faced_cards)
+
+            result = store.get_cards_by_names(
+                ["Delver of Secrets", "Delver of Secrets // Insectile Aberration"]
+            )
+            assert result["Delver of Secrets"]["name"] == (
+                "Delver of Secrets // Insectile Aberration"
+            )
+            assert result["Delver of Secrets // Insectile Aberration"]["name"] == (
+                "Delver of Secrets // Insectile Aberration"
+            )
+
+            store.close()
+
+
 class TestDoubleFacedCards:
     """Test handling of double-faced cards (transform, modal_dfc, split, adventure)."""
 

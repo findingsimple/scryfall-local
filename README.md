@@ -144,9 +144,11 @@ Search for cards using Scryfall syntax.
 ```
 
 ### get_card
-Get a single card by exact name or Scryfall ID.
+Get a single card by name or Scryfall ID. Name matching is case-insensitive,
+and the front-face name is enough for double-faced cards.
 ```
-{"name": "Lightning Bolt"}
+{"name": "lightning bolt"}
+{"name": "Delver of Secrets"}
 {"id": "e2d1f479-..."}
 ```
 

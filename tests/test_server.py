@@ -226,6 +226,36 @@ class TestServerGetCard:
                 assert result["id"] == card_id
 
     @pytest.mark.asyncio
+    async def test_get_card_by_name_case_insensitive(self, sample_cards: list[dict[str, Any]]):
+        """Should get card regardless of request casing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_card",
+                    {"name": "lightning bolt"},
+                )
+
+                assert result.get("name") == "Lightning Bolt"
+
+    @pytest.mark.asyncio
+    async def test_get_card_by_dfc_front_face(
+        self, double_faced_cards: list[dict[str, Any]]
+    ):
+        """Should get a double-faced card by its front-face name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(double_faced_cards)
+
+                result = await server.call_tool(
+                    "get_card",
+                    {"name": "Delver of Secrets"},
+                )
+
+                assert result.get("name") == "Delver of Secrets // Insectile Aberration"
+
+    @pytest.mark.asyncio
     async def test_get_card_not_found(self, sample_cards: list[dict[str, Any]]):
         """Should handle card not found."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -273,6 +303,24 @@ class TestServerGetCardsBatch:
                 assert "found" in result
                 assert "not_found" in result
                 assert len(result["found"]) == 2
+                found_names = [c["name"] for c in result["found"]]
+                assert "Lightning Bolt" in found_names
+                assert "Counterspell" in found_names
+
+    @pytest.mark.asyncio
+    async def test_get_cards_batch_mixed_case_names(self, sample_cards: list[dict[str, Any]]):
+        """Mixed-case requests should resolve and not appear in not_found."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_cards_batch",
+                    {"names": ["lightning bolt", "COUNTERSPELL"]},
+                )
+
+                assert len(result["found"]) == 2
+                assert result["not_found"] == []
                 found_names = [c["name"] for c in result["found"]]
                 assert "Lightning Bolt" in found_names
                 assert "Counterspell" in found_names
