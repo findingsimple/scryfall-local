@@ -47,6 +47,9 @@ htmlcov/
 # Claude Code (personal settings)
 .claude/
 
+# Session working notes (handoffs, scratch docs)
+.scratch/
+
 # OS
 .DS_Store
 Thumbs.db
