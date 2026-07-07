@@ -169,7 +169,9 @@ Get a random card, optionally filtered.
 ```
 
 ### data_status
-Check the status of the local data cache.
+Check the status of the local data cache. Local-only by default; pass
+`"check_updates": true` to also compare against Scryfall for staleness
+(requires a network call).
 
 ### refresh_data
 Trigger a data refresh if updates are available.

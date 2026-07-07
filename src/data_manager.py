@@ -36,7 +36,7 @@ class DataStatus:
     last_updated: datetime | None
     card_count: int
     version: str | None
-    is_stale: bool
+    is_stale: bool | None  # None = not checked against the server
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -433,8 +433,14 @@ class DataManager:
             # If we can't check, assume stale
             return True
 
-    async def get_status(self) -> DataStatus:
+    async def get_status(self, check_updates: bool = False) -> DataStatus:
         """Get status of local data cache.
+
+        Args:
+            check_updates: Compare against the Scryfall server to determine
+                staleness. Requires a network round-trip (30s connect timeout
+                when offline), so it's off by default; without it is_stale is
+                None ("not checked") unless the cache is missing entirely.
 
         Returns:
             DataStatus with cache information
@@ -458,11 +464,13 @@ class DataManager:
             except ValueError:
                 pass
 
-        # Check staleness
-        try:
-            is_stale = await self.is_cache_stale()
-        except Exception:
-            is_stale = True
+        # Check staleness (network) only when asked
+        is_stale: bool | None = None
+        if check_updates:
+            try:
+                is_stale = await self.is_cache_stale()
+            except Exception:
+                is_stale = True
 
         return DataStatus(
             last_updated=last_updated,

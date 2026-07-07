@@ -227,10 +227,18 @@ class ScryfallServer:
             Tool(
                 name="data_status",
                 description="Check the status of the local card data cache. "
-                "Returns card count, last updated time, and whether data is stale.",
+                "Returns card count and last updated time. Pass check_updates=true "
+                "to also compare against Scryfall for staleness (network call).",
                 inputSchema={
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "check_updates": {
+                            "type": "boolean",
+                            "description": "Compare against the Scryfall server to "
+                            "report staleness (default false — local status only)",
+                            "default": False,
+                        },
+                    },
                 },
             ),
             Tool(
@@ -498,13 +506,16 @@ class ScryfallServer:
         """Get data cache status.
 
         Returns:
-            {"last_updated": str, "card_count": int, "stale": bool, "refresh_status": str}
+            {"last_updated": str, "card_count": int, "stale": bool | None,
+             "refresh_status": str}
         """
+        check_updates = bool(arguments.get("check_updates", False))
+
         # Acquire lock for consistency with other methods
         async with self._refresh_lock:
             store = self._get_store()
             card_count = store.get_card_count()
-        status = await self._data_manager.get_status()
+        status = await self._data_manager.get_status(check_updates=check_updates)
 
         result = {
             "last_updated": status.last_updated.isoformat() if status.last_updated else None,
@@ -512,6 +523,11 @@ class ScryfallServer:
             "version": status.version,
             "stale": status.is_stale,
         }
+        if status.is_stale is None:
+            result["stale_hint"] = (
+                "Staleness not checked (avoids a network call). Pass "
+                "check_updates=true to compare against Scryfall."
+            )
 
         # Include refresh status if not idle
         if self._refresh_status != "idle":

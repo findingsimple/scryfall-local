@@ -614,6 +614,55 @@ class TestServerDataStatus:
                 assert result["card_count"] == 0
                 assert result["stale"] is True
 
+    @pytest.mark.asyncio
+    async def test_data_status_default_no_network(self, sample_cards: list[dict[str, Any]]):
+        """data_status must not touch the network unless asked to."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+                server._data_manager._write_metadata_atomic(
+                    {
+                        "type": "oracle_cards",
+                        "downloaded_at": "2025-01-09T12:00:00+00:00",
+                        "updated_at": "2025-01-09T12:00:00+00:00",
+                        "card_count": len(sample_cards),
+                    }
+                )
+
+                with patch.object(server._data_manager, "get_bulk_data_info") as spy:
+                    result = await server.call_tool("data_status", {})
+
+                    spy.assert_not_called()
+                    assert result["stale"] is None
+                    assert "check_updates" in result["stale_hint"]
+
+    @pytest.mark.asyncio
+    async def test_data_status_check_updates(self, sample_cards: list[dict[str, Any]]):
+        """check_updates=true should run the staleness comparison."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+                server._data_manager._write_metadata_atomic(
+                    {
+                        "type": "oracle_cards",
+                        "downloaded_at": "2025-01-09T12:00:00+00:00",
+                        "updated_at": "2025-01-09T12:00:00+00:00",
+                        "card_count": len(sample_cards),
+                    }
+                )
+
+                with patch.object(
+                    server._data_manager,
+                    "get_bulk_data_info",
+                    return_value={"updated_at": "2025-01-09T12:00:00+00:00"},
+                ):
+                    result = await server.call_tool(
+                        "data_status", {"check_updates": True}
+                    )
+
+                    assert result["stale"] is False
+                    assert "stale_hint" not in result
+
 
 class TestServerResponseFormat:
     """Test response format for agentic use."""

@@ -123,7 +123,8 @@ async def show_status(data_dir: Path) -> None:
     manager = DataManager(data_dir)
 
     try:
-        status = await manager.get_status()
+        # CLI status is human-invoked; keep the server comparison here
+        status = await manager.get_status(check_updates=True)
 
         print("Scryfall Local Data Status")
         print("-" * 40)
@@ -135,7 +136,8 @@ async def show_status(data_dir: Path) -> None:
 
         print(f"  Card count:   {status.card_count:,}")
         print(f"  Version:      {status.version or 'Unknown'}")
-        print(f"  Stale:        {'Yes' if status.is_stale else 'No'}")
+        stale_display = "Unknown" if status.is_stale is None else ("Yes" if status.is_stale else "No")
+        print(f"  Stale:        {stale_display}")
 
         if status.is_stale:
             print()

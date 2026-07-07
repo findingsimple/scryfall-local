@@ -702,6 +702,61 @@ class TestDataManagerStatus:
                 assert status.card_count == 50000
                 assert status.last_updated is not None
 
+    @pytest.mark.asyncio
+    async def test_get_status_default_skips_update_check(self):
+        """get_status must not hit the network unless check_updates=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata = {
+                "type": "all_cards",
+                "downloaded_at": "2025-01-09T12:00:00+00:00",
+                "updated_at": "2025-01-09T12:00:00+00:00",
+                "card_count": 50000,
+            }
+            with open(Path(tmpdir) / "metadata.json", "w") as f:
+                json.dump(metadata, f)
+
+            async with DataManager(Path(tmpdir)) as manager:
+                with patch.object(manager, "get_bulk_data_info") as spy:
+                    status = await manager.get_status()
+
+                    spy.assert_not_called()
+                    # Staleness is unknown without the server comparison
+                    assert status.is_stale is None
+
+    @pytest.mark.asyncio
+    async def test_get_status_no_data_is_stale_without_network(self):
+        """A missing cache is definitively stale — no network call needed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with DataManager(Path(tmpdir)) as manager:
+                with patch.object(manager, "get_bulk_data_info") as spy:
+                    status = await manager.get_status()
+
+                    spy.assert_not_called()
+                    assert status.is_stale is True
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_get_status_check_updates_compares_server(self):
+        """check_updates=True should perform the real staleness comparison."""
+        respx.get("https://api.scryfall.com/bulk-data").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CATALOG)
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata = {
+                "type": "all_cards",
+                "downloaded_at": "2025-01-01T00:00:00+00:00",
+                "updated_at": "2025-01-01T00:00:00+00:00",  # Old
+                "card_count": 100,
+            }
+            with open(Path(tmpdir) / "metadata.json", "w") as f:
+                json.dump(metadata, f)
+
+            async with DataManager(Path(tmpdir)) as manager:
+                status = await manager.get_status(check_updates=True)
+
+                assert status.is_stale is True
+
 
 class TestRetryJitter:
     """Test that retry backoff includes jitter."""
