@@ -5,6 +5,7 @@ Scryfall bulk data. Uses the low-level MCP Server class for educational purposes
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -12,16 +13,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import mcp.types as types
-from mcp.server.lowlevel import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
+import mcp.types as types
+from mcp.server.lowlevel import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 from src import __version__
 from src.card_store import CardStore
 from src.data_manager import DataManager
 from src.import_utils import import_to_temp_and_swap
-from src.query_parser import QueryParser, QueryError, SUPPORTED_SYNTAX, SYNTAX_SUMMARY
+from src.query_parser import SYNTAX_SUMMARY, QueryError, QueryParser
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +91,8 @@ class ScryfallServer:
         # Cancel any background refresh task
         if self._refresh_task is not None and not self._refresh_task.done():
             self._refresh_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._refresh_task
-            except asyncio.CancelledError:
-                pass
             self._refresh_task = None
 
         # Close database connection
@@ -144,7 +143,8 @@ class ScryfallServer:
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Scryfall search query (e.g., 'c:blue t:instant cmc<=2')",
+                            "description": "Scryfall search query "
+                            "(e.g., 'c:blue t:instant cmc<=2')",
                         },
                         "limit": {
                             "type": "integer",
@@ -192,8 +192,9 @@ class ScryfallServer:
             ),
             Tool(
                 name="get_cards_batch",
-                description="Get multiple Magic: The Gathering cards by name or ID in a single call. "
-                "More efficient than multiple get_card calls. Limited to 50 cards per request.",
+                description="Get multiple Magic: The Gathering cards by name or ID in a "
+                "single call. More efficient than multiple get_card calls. "
+                "Limited to 50 cards per request.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -388,10 +389,7 @@ class ScryfallServer:
         # Wait for any ongoing refresh to complete
         async with self._refresh_lock:
             store = self._get_store()
-            if name:
-                card = store.get_card_by_name(name)
-            else:
-                card = store.get_card_by_id(card_id)
+            card = store.get_card_by_name(name) if name else store.get_card_by_id(card_id)
             warning = self._empty_db_warning(store)
 
         if card:
@@ -634,7 +632,8 @@ class ScryfallServer:
 
             return {
                 "status": "downloading",
-                "message": "Data refresh started. This may take several minutes for the full dataset (~2.5 GB download). Use data_status to check progress.",
+                "message": "Data refresh started. This may take several minutes for the "
+                "full dataset (~2.5 GB download). Use data_status to check progress.",
             }
 
         except Exception as e:

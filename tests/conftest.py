@@ -1,9 +1,9 @@
 """Shared test fixtures for Scryfall Local MCP Server."""
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
-from typing import Any
 
 
 @pytest.fixture

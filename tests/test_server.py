@@ -1,12 +1,13 @@
 """Tests for MCP server - TDD approach."""
 
+import asyncio
 import json
-import pytest
 import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-import asyncio
+
+import pytest
 
 from src.server import ScryfallServer, create_server
 

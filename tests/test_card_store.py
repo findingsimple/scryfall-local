@@ -1,10 +1,11 @@
 """Tests for card store (SQLite) - TDD approach."""
 
-import json
-import pytest
+import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from src.card_store import CardStore
 from src.query_parser import ParsedQuery
@@ -119,8 +120,8 @@ class TestCardStoreInsert:
             more_cards = sample_cards[3:5]
             batch = good_cards + [bad_card] + more_cards
 
-            # Insert should fail
-            with pytest.raises(Exception):
+            # Insert should fail (NULL id/name violates NOT NULL constraints)
+            with pytest.raises(sqlite3.IntegrityError):
                 store.insert_cards(batch)
 
             # No cards should be inserted due to rollback
@@ -1762,7 +1763,6 @@ class TestCardStoreConcurrentAccess:
     def test_multiple_readers(self, sample_cards: list[dict[str, Any]]):
         """Multiple read operations should work concurrently."""
         import threading
-        import time
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "cards.db"

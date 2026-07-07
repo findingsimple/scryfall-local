@@ -1,8 +1,10 @@
 """Shared utilities for importing card data."""
 
+import contextlib
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from src.card_store import CardStore
 
@@ -133,10 +135,8 @@ def import_to_temp_and_swap(
         for suffix in ("-wal", "-shm"):
             companion = Path(str(db_path) + suffix)
             if companion.exists():
-                try:
+                with contextlib.suppress(OSError):
                     companion.unlink()
-                except OSError:
-                    pass
 
         return card_count, skipped
 
@@ -154,7 +154,5 @@ def _cleanup_temp_files(temp_path: Path) -> None:
         Path(str(temp_path) + "-shm"),
     ):
         if path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 path.unlink()
-            except OSError:
-                pass

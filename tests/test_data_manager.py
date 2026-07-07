@@ -1,17 +1,16 @@
 """Tests for data manager (bulk data download) - TDD approach."""
 
 import json
-import pytest
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 import respx
 
 from src.data_manager import DataManager, DataStatus
-
 
 # Sample bulk data catalog response
 SAMPLE_CATALOG = {
@@ -571,7 +570,7 @@ class TestDataManagerCache:
             # Create a recent metadata file
             metadata = {
                 "type": "all_cards",
-                "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                "downloaded_at": datetime.now(UTC).isoformat(),
                 "updated_at": "2025-01-09T12:00:00.000+00:00",
                 "card_count": 100,
             }
@@ -628,7 +627,7 @@ class TestDataManagerCache:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Metadata with NO type key — simulates older version
             metadata = {
-                "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                "downloaded_at": datetime.now(UTC).isoformat(),
                 "updated_at": "2025-01-09T12:00:00.000+00:00",
                 "card_count": 100,
             }

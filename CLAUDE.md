@@ -29,6 +29,9 @@ uv sync
 # Run tests
 uv run pytest -v
 
+# Lint (config in pyproject.toml; tests ignore SIM117/E501 by design)
+uv run ruff check src tests
+
 # Check data status
 uv run python -m src.cli status
 
@@ -135,9 +138,10 @@ Security measures:
 - LIKE wildcards (`%`, `_`) in user input are escaped via `_escape_like()`
 - Query strings are limited to 1,000 characters (`MAX_QUERY_LENGTH`)
 
-## Future Enhancements
+## Tooling Decisions
 
-Optional improvements to consider:
-- **ruff** - Fast linting and formatting (replaces flake8/isort/black)
-- **mypy** - Type checking (project already has type hints)
-- **GitHub Actions** - CI workflow for PRs
+- **ruff** is configured in `pyproject.toml`, matching the reef-log /
+  calorie-counter convention (line-length 100, rules E/F/W/I/B/UP/SIM).
+  Tests ignore `SIM117` (nested `with` is the suite's idiom) and `E501`.
+- **mypy** and **GitHub Actions CI** were considered and deliberately
+  skipped — this is a local personal tool; keep it simple.

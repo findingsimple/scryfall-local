@@ -3,13 +3,12 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from unittest.mock import patch
-
-from src.import_utils import import_cards_streaming, import_to_temp_and_swap
 from src.card_store import CardStore
+from src.import_utils import import_cards_streaming, import_to_temp_and_swap
 
 
 class TestImportCardsStreaming:
@@ -184,8 +183,7 @@ class TestImportCardsStreaming:
             tmpdir_path = Path(tmpdir)
 
             json_file = tmpdir_path / "empty.json"
-            with open(json_file, "w") as f:
-                pass  # Empty file
+            json_file.touch()  # Empty file
 
             db_path = tmpdir_path / "cards.db"
             store = CardStore(db_path)
@@ -524,9 +522,8 @@ class TestImportToTempAndSwap:
             with patch(
                 "src.import_utils.import_cards_streaming",
                 side_effect=RuntimeError("Simulated import failure"),
-            ):
-                with pytest.raises(RuntimeError, match="Simulated import failure"):
-                    import_to_temp_and_swap(json_file, db_path)
+            ), pytest.raises(RuntimeError, match="Simulated import failure"):
+                import_to_temp_and_swap(json_file, db_path)
 
             # Old database should still be intact
             assert db_path.exists()
@@ -545,9 +542,8 @@ class TestImportToTempAndSwap:
             with patch(
                 "src.import_utils.import_cards_streaming",
                 side_effect=RuntimeError("Simulated failure"),
-            ):
-                with pytest.raises(RuntimeError):
-                    import_to_temp_and_swap(json_file, db_path)
+            ), pytest.raises(RuntimeError):
+                import_to_temp_and_swap(json_file, db_path)
 
             assert not db_path.with_suffix(".db.tmp").exists()
             assert not Path(str(db_path.with_suffix(".db.tmp")) + "-wal").exists()
@@ -629,9 +625,8 @@ class TestImportToTempAndSwap:
             with patch.object(
                 CardStore, "checkpoint",
                 side_effect=RuntimeError("Simulated checkpoint failure"),
-            ):
-                with pytest.raises(RuntimeError, match="Simulated checkpoint failure"):
-                    import_to_temp_and_swap(new_json, db_path)
+            ), pytest.raises(RuntimeError, match="Simulated checkpoint failure"):
+                import_to_temp_and_swap(new_json, db_path)
 
             # Old database should be intact
             assert db_path.exists()

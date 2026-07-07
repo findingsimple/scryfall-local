@@ -6,7 +6,6 @@ All queries use parameterized statements for SQL injection prevention.
 
 import json
 import logging
-import random
 import re
 import sqlite3
 from decimal import Decimal
@@ -603,7 +602,10 @@ class CardStore:
         placeholders = ", ".join("?" for _ in names)
         cursor = self._conn.cursor()
         cursor.execute(f"SELECT * FROM cards WHERE name IN ({placeholders})", names)
-        exact = {card["name"]: card for card in (self._row_to_dict(row) for row in cursor.fetchall())}
+        exact = {
+            card["name"]: card
+            for card in (self._row_to_dict(row) for row in cursor.fetchall())
+        }
         result = {}
         for requested in names:
             card = exact.get(requested) or self.get_card_by_name(requested)
@@ -981,7 +983,9 @@ class CardStore:
         self._add_color_filter(filters, "colors", "colors", conditions, params)
         self._add_color_not_filter(filters, "colors_not", "colors", conditions, params)
         self._add_color_filter(filters, "color_identity", "color_identity", conditions, params)
-        self._add_color_not_filter(filters, "color_identity_not", "color_identity", conditions, params)
+        self._add_color_not_filter(
+            filters, "color_identity_not", "color_identity", conditions, params
+        )
 
         # CMC filter
         self._add_numeric_filter(filters, "cmc", "cmc", conditions, params)
@@ -1021,11 +1025,15 @@ class CardStore:
         if not use_fts:
             self._add_like_filter(filters, "oracle_text", "oracle_text", conditions, params)
         oracle_col = "cards.oracle_text" if use_fts else "oracle_text"
-        self._add_like_filter(filters, "oracle_text_not", oracle_col, conditions, params, negated=True)
+        self._add_like_filter(
+            filters, "oracle_text_not", oracle_col, conditions, params, negated=True
+        )
 
         # Flavor text filters
         self._add_like_filter(filters, "flavor_text", "flavor_text", conditions, params)
-        self._add_like_filter(filters, "flavor_text_not", "flavor_text", conditions, params, negated=True)
+        self._add_like_filter(
+            filters, "flavor_text_not", "flavor_text", conditions, params, negated=True
+        )
 
         # Set filters
         self._add_exact_filter(filters, "set", "set_code", conditions, params)
@@ -1059,11 +1067,15 @@ class CardStore:
         self._add_stat_filter(filters, "power", "power", conditions, params)
         self._add_stat_filter(filters, "power_not", "power", conditions, params, negated=True)
         self._add_stat_filter(filters, "toughness", "toughness", conditions, params)
-        self._add_stat_filter(filters, "toughness_not", "toughness", conditions, params, negated=True)
+        self._add_stat_filter(
+            filters, "toughness_not", "toughness", conditions, params, negated=True
+        )
 
         # Loyalty filters
         self._add_numeric_filter(filters, "loyalty", "CAST(loyalty AS INTEGER)", conditions, params)
-        self._add_numeric_filter(filters, "loyalty_not", "CAST(loyalty AS INTEGER)", conditions, params, negated=True)
+        self._add_numeric_filter(
+            filters, "loyalty_not", "CAST(loyalty AS INTEGER)", conditions, params, negated=True
+        )
 
         # Collector number filter (special handling for alphanumeric values)
         if "collector_number" in filters:
@@ -1119,7 +1131,9 @@ class CardStore:
 
         # Keyword filters (JSON array search)
         self._add_json_array_filter(filters, "keyword", "keywords", conditions, params)
-        self._add_json_array_filter(filters, "keyword_not", "keywords", conditions, params, negated=True)
+        self._add_json_array_filter(
+            filters, "keyword_not", "keywords", conditions, params, negated=True
+        )
 
         # Artist filters
         self._add_like_filter(filters, "artist", "artist", conditions, params)
@@ -1130,7 +1144,8 @@ class CardStore:
             filters, "year", "CAST(substr(released_at, 1, 4) AS INTEGER)", conditions, params
         )
         self._add_numeric_filter(
-            filters, "year_not", "CAST(substr(released_at, 1, 4) AS INTEGER)", conditions, params, negated=True
+            filters, "year_not", "CAST(substr(released_at, 1, 4) AS INTEGER)",
+            conditions, params, negated=True
         )
 
         # Banned in format filter
@@ -1173,15 +1188,21 @@ class CardStore:
 
         # Watermark filters
         self._add_exact_filter(filters, "watermark", "watermark", conditions, params)
-        self._add_exact_filter(filters, "watermark_not", "watermark", conditions, params, negated=True)
+        self._add_exact_filter(
+            filters, "watermark_not", "watermark", conditions, params, negated=True
+        )
 
         # Layout filters
         self._add_exact_filter(filters, "layout", "layout", conditions, params)
         self._add_exact_filter(filters, "layout_not", "layout", conditions, params, negated=True)
 
         # Produces token filters (JSON array search)
-        self._add_json_array_filter(filters, "produces_token", "produces_tokens", conditions, params)
-        self._add_json_array_filter(filters, "produces_token_not", "produces_tokens", conditions, params, negated=True)
+        self._add_json_array_filter(
+            filters, "produces_token", "produces_tokens", conditions, params
+        )
+        self._add_json_array_filter(
+            filters, "produces_token_not", "produces_tokens", conditions, params, negated=True
+        )
 
         # Block filter (set code IN clause)
         if "block" in filters:

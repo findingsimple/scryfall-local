@@ -22,6 +22,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "respx>=0.21.0",
+    "ruff>=0.5.0",
 ]
 
 [build-system]
@@ -35,3 +36,16 @@ pythonpath = ["."]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# SIM117: nested `with tempfile...: with Store/Server...:` is the test
+# suite's established idiom (~70 sites); combining adds churn, not clarity.
+# E501: long lines in tests are mostly card data and descriptive test names.
+"tests/*" = ["SIM117", "E501"]

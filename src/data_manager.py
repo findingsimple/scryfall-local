@@ -4,14 +4,16 @@ Handles downloading, caching, and freshness checking of Scryfall bulk data.
 Implements security measures for URL validation and path traversal prevention.
 """
 
+import contextlib
 import json
 import logging
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -165,10 +167,7 @@ class DataManager:
             return False
 
         # Must be from allowed domain
-        if parsed.netloc not in ALLOWED_DOMAINS:
-            return False
-
-        return True
+        return parsed.netloc in ALLOWED_DOMAINS
 
     def is_safe_filename(self, filename: str) -> bool:
         """Check if filename is safe (no path traversal).
@@ -190,10 +189,7 @@ class DataManager:
             return False
 
         # Only allow alphanumeric, dash, underscore, dot
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", filename):
-            return False
-
-        return True
+        return bool(re.match(r"^[a-zA-Z0-9_.-]+$", filename))
 
     async def fetch_catalog(self) -> dict[str, Any]:
         """Fetch bulk data catalog from Scryfall.
@@ -286,10 +282,8 @@ class DataManager:
 
             # Clean up any leftover temp file before (re-)downloading
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
 
             try:
                 # Download file with validated redirects
@@ -319,10 +313,12 @@ class DataManager:
 
                     # Download successful - save metadata and return
                     if attempt > 0:
-                        logger.info("Download succeeded on attempt %d/%d", attempt + 1, max_retries + 1)
+                        logger.info(
+                            "Download succeeded on attempt %d/%d", attempt + 1, max_retries + 1
+                        )
                     metadata = {
                         "type": data_type,
-                        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                        "downloaded_at": datetime.now(UTC).isoformat(),
                         "updated_at": info.get("updated_at"),
                         "card_count": 0,  # Will be updated after import
                         "filename": filename,
@@ -338,10 +334,8 @@ class DataManager:
                 last_error = e
                 # Remove partial temp download on error
                 if temp_path.exists():
-                    try:
+                    with contextlib.suppress(OSError):
                         temp_path.unlink()
-                    except OSError:
-                        pass
                 # Continue to next retry attempt
                 continue
 
@@ -359,7 +353,7 @@ class DataManager:
         try:
             with open(self._metadata_path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None
 
     def _write_metadata_atomic(self, metadata: dict[str, Any]) -> None:
@@ -385,10 +379,8 @@ class DataManager:
             Path(temp_path).replace(self._metadata_path)
         except Exception:
             # Clean up temp file on error
-            try:
+            with contextlib.suppress(OSError):
                 Path(temp_path).unlink()
-            except OSError:
-                pass
             raise
 
     def get_cached_data_type(self) -> str:
@@ -459,10 +451,8 @@ class DataManager:
         last_updated = None
         downloaded_at = metadata.get("downloaded_at")
         if downloaded_at:
-            try:
+            with contextlib.suppress(ValueError):
                 last_updated = datetime.fromisoformat(downloaded_at)
-            except ValueError:
-                pass
 
         # Check staleness (network) only when asked
         is_stale: bool | None = None

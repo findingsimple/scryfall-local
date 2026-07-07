@@ -16,7 +16,6 @@ import pytest
 from src.card_store import CardStore
 from src.query_parser import QueryError, QueryParser
 
-
 BEHAVIOUR_CARDS: list[dict[str, Any]] = [
     {
         "id": "b0000000-0000-0000-0000-000000000001",

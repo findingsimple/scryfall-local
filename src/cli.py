@@ -136,7 +136,7 @@ async def show_status(data_dir: Path) -> None:
 
         print(f"  Card count:   {status.card_count:,}")
         print(f"  Version:      {status.version or 'Unknown'}")
-        stale_display = "Unknown" if status.is_stale is None else ("Yes" if status.is_stale else "No")
+        stale_display = {None: "Unknown", True: "Yes", False: "No"}[status.is_stale]
         print(f"  Stale:        {stale_display}")
 
         if status.is_stale:

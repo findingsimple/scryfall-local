@@ -1,19 +1,20 @@
 """Tests for CLI module."""
 
 import json
-import pytest
 import tempfile
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.cli import (
-    format_size,
-    print_progress_bar,
     download_data,
-    show_status,
+    format_size,
     import_data,
     main,
+    print_progress_bar,
+    show_status,
 )
 
 
@@ -83,14 +84,13 @@ class TestShowStatus:
     @pytest.mark.asyncio
     async def test_show_status_no_data(self):
         """Should show status when no data exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("builtins.print") as mock_print:
-                await show_status(Path(tmpdir))
+        with tempfile.TemporaryDirectory() as tmpdir, patch("builtins.print") as mock_print:
+            await show_status(Path(tmpdir))
 
-                # Should print status header
-                calls = [str(c) for c in mock_print.call_args_list]
-                assert any("Status" in str(c) for c in calls)
-                assert any("Never" in str(c) for c in calls)
+            # Should print status header
+            calls = [str(c) for c in mock_print.call_args_list]
+            assert any("Status" in str(c) for c in calls)
+            assert any("Never" in str(c) for c in calls)
 
     @pytest.mark.asyncio
     async def test_show_status_with_data(self):
@@ -120,22 +120,20 @@ class TestImportData:
     @pytest.mark.asyncio
     async def test_import_data_no_file(self):
         """Should handle missing JSON file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("builtins.print") as mock_print:
-                await import_data(Path(tmpdir))
+        with tempfile.TemporaryDirectory() as tmpdir, patch("builtins.print") as mock_print:
+            await import_data(Path(tmpdir))
 
-                calls = [str(c) for c in mock_print.call_args_list]
-                assert any("No JSON data file found" in str(c) for c in calls)
+            calls = [str(c) for c in mock_print.call_args_list]
+            assert any("No JSON data file found" in str(c) for c in calls)
 
     @pytest.mark.asyncio
     async def test_import_data_file_not_exists(self):
         """Should handle non-existent specified file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("builtins.print") as mock_print:
-                await import_data(Path(tmpdir), Path(tmpdir) / "nonexistent.json")
+        with tempfile.TemporaryDirectory() as tmpdir, patch("builtins.print") as mock_print:
+            await import_data(Path(tmpdir), Path(tmpdir) / "nonexistent.json")
 
-                calls = [str(c) for c in mock_print.call_args_list]
-                assert any("File not found" in str(c) for c in calls)
+            calls = [str(c) for c in mock_print.call_args_list]
+            assert any("File not found" in str(c) for c in calls)
 
     @pytest.mark.asyncio
     async def test_import_data_success(self):
@@ -152,9 +150,8 @@ class TestImportData:
             with open(json_file, "w") as f:
                 json.dump(sample_cards, f)
 
-            with patch("builtins.print"):
-                with patch("sys.stdout.write"):
-                    await import_data(tmpdir_path, json_file)
+            with patch("builtins.print"), patch("sys.stdout.write"):
+                await import_data(tmpdir_path, json_file)
 
             # Verify database was created
             db_path = tmpdir_path / "cards.db"
@@ -179,9 +176,8 @@ class TestImportData:
             with open(json_file, "w") as f:
                 json.dump(sample_cards, f)
 
-            with patch("builtins.print"):
-                with patch("sys.stdout.write"):
-                    await import_data(tmpdir_path)
+            with patch("builtins.print"), patch("sys.stdout.write"):
+                await import_data(tmpdir_path)
 
             # Verify import succeeded
             db_path = tmpdir_path / "cards.db"

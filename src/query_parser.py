@@ -26,7 +26,8 @@ SYNTAX_SUMMARY = (
 
 # Detailed list for error messages
 SUPPORTED_SYNTAX = [
-    'name search: bolt or "lightning bolt" (substring match), !"Exact Name" (exact match, case-insensitive)',
+    'name search: bolt or "lightning bolt" (substring match), '
+    '!"Exact Name" (exact match, case-insensitive)',
     "colors: c:blue, c:urg, c>=rg, c<=w, c:c (colorless)",
     "color identity: id:wubrg, identity:esper, ci:rg (for Commander)",
     "mana value: cmc:3, cmc>=5, cmc<2, mv:3",
@@ -46,7 +47,8 @@ SUPPORTED_SYNTAX = [
     "collector number: cn:123, cn:1a (find specific printings)",
     "price: usd<1, usd>=10, eur<5",
     "produces token: pt:zombie, produces_token:\"Goblin Token\" (find token creators)",
-    "card properties: is:dfc, is:transform, is:mdfc, is:split, is:adventure, is:flip, is:meld, is:permanent, is:spell",
+    "card properties: is:dfc, is:transform, is:mdfc, is:split, is:adventure, "
+    "is:flip, is:meld, is:permanent, is:spell",
     "boolean: implicit AND, OR, - (negation), parentheses",
 ]
 
@@ -121,7 +123,8 @@ class QueryError(Exception):
         return f"{self.message}. Hint: {self.hint}"
 
 
-# A single filter condition: (filter_key, filter_value), e.g. ("cmc", {"operator": ">=", "value": 2})
+# A single filter condition: (filter_key, filter_value),
+# e.g. ("cmc", {"operator": ">=", "value": 2})
 Condition = tuple[str, Any]
 
 # Filter keys that accumulate multiple values in the legacy `filters` dict view
@@ -235,7 +238,8 @@ TOKEN_PATTERNS = [
     (r'(?:o|oracle|text):([a-zA-Z]+)', 'ORACLE'),
     (r'(?:ft|flavor):"([^"]+)"', 'FLAVOR_QUOTED'),
     (r'(?:ft|flavor):([a-zA-Z]+)', 'FLAVOR'),
-    # Full oracle text (includes reminder text) - fo: is alias for o: since oracle_text already has reminder text
+    # Full oracle text (includes reminder text) - fo: is alias for o: since
+    # oracle_text already has reminder text
     (r'(?:fo|fulloracle):"([^"]+)"', 'FULL_ORACLE_QUOTED'),
     (r'(?:fo|fulloracle):([a-zA-Z]+)', 'FULL_ORACLE'),
     (r'(?:set|e|s|edition):([a-zA-Z0-9]+)', 'SET'),
@@ -407,13 +411,17 @@ class QueryParser:
                     elif token_type in self._STAT_TOKENS:
                         # Keep '*' as string, convert numbers to int
                         value = match.group(2)
-                        tokens.append((token_type, (match.group(1), value if value == '*' else int(value))))
+                        tokens.append(
+                            (token_type, (match.group(1), value if value == '*' else int(value)))
+                        )
                     elif token_type == 'PRICE':
                         # Extract currency from prefix
                         full_match = match.group(0).lower()
                         currency = 'usd' if full_match.startswith('usd') else \
                                    'eur' if full_match.startswith('eur') else 'tix'
-                        tokens.append((token_type, (currency, match.group(1), float(match.group(2)))))
+                        tokens.append(
+                            (token_type, (currency, match.group(1), float(match.group(2))))
+                        )
                     elif token_type in self._QUOTED_TOKENS:
                         tokens.append((token_type.replace('_QUOTED', ''), match.group(1)))
                     elif token_type in self._SIMPLE_VALUE_TOKENS:
@@ -642,7 +650,8 @@ class QueryParser:
             'CMC': 'cmc',
             'TYPE': 'type',
             'ORACLE': 'oracle_text',
-            'FULL_ORACLE': 'oracle_text',  # fo: is alias for o: (oracle_text includes reminder text)
+            # fo: is alias for o: (oracle_text includes reminder text)
+            'FULL_ORACLE': 'oracle_text',
             'FLAVOR': 'flavor_text',
             'SET': 'set',
             'RARITY': 'rarity',
@@ -743,7 +752,10 @@ class QueryParser:
             # m:{R} means contains {R}, m={R} means exactly {R}
             return {"operator": operator, "value": mana_str}
 
-        if token_type in ('TYPE', 'ORACLE', 'FULL_ORACLE', 'FLAVOR', 'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME'):
+        if token_type in (
+            'TYPE', 'ORACLE', 'FULL_ORACLE', 'FLAVOR',
+            'EXACT_NAME', 'STRICT_NAME', 'PARTIAL_NAME',
+        ):
             return value
 
         if token_type == 'BANNED':

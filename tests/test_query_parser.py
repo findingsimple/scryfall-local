@@ -1,7 +1,8 @@
 """Tests for Scryfall query parser - TDD approach."""
 
 import pytest
-from src.query_parser import QueryParser, ParsedQuery, QueryError
+
+from src.query_parser import QueryError, QueryParser
 
 
 class TestQueryParserBasicName:
