@@ -228,6 +228,15 @@ class TestOrBranchConditions:
     def test_or_distributes_outer_filters(self, search):
         assert search("(o:haste OR o:trample) r:rare") == ["Bolt Hound"]
 
+    def test_lowercase_or_is_boolean_or(self, search):
+        # Matches live Scryfall (verified July 2026: "sword or plowshares"
+        # and "sword OR plowshares" both return the union, 83 cards) —
+        # lowercase or IS the boolean operator, not a name word
+        assert search("hound or sprite") == search("hound OR sprite") == [
+            "Bolt Hound",
+            "Cloud Sprite",
+        ]
+
 
 class TestQueryComplexityAndErrors:
     """Structural errors are reported, not silently mis-answered."""
