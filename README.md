@@ -138,9 +138,13 @@ uv run python -m src.cli import     # Imports into SQLite (auto-detects JSON fil
 ## MCP Tools
 
 ### search_cards
-Search for cards using Scryfall syntax.
+Search for cards using Scryfall syntax. Results use a compact projection
+(see the field table below); pass `"verbose": true` for full card objects,
+or fetch full detail for a specific card with `get_card`. Null fields are
+omitted from compact results.
 ```
 {"query": "c:blue t:instant cmc<=2", "limit": 10}
+{"query": "t:planeswalker", "verbose": true}
 ```
 
 ### get_card
@@ -172,37 +176,40 @@ Trigger a data refresh if updates are available.
 
 ## Card Response Fields
 
-Each card returned includes these fields:
+The **Search** column marks fields included in compact `search_cards` results
+(null fields omitted per card). Full cards — from `get_card`,
+`get_cards_batch`, `random_card`, or `search_cards` with `verbose: true` —
+include every field.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Scryfall card ID |
-| `oracle_id` | string | Oracle ID (same across printings) |
-| `name` | string | Card name |
-| `mana_cost` | string | Mana cost (e.g., "{2}{U}{U}") |
-| `cmc` | number | Mana value |
-| `type_line` | string | Full type line |
-| `oracle_text` | string | Rules text |
-| `power` | string | Power (creatures) |
-| `toughness` | string | Toughness (creatures) |
-| `loyalty` | string | Starting loyalty (planeswalkers) |
-| `colors` | array | Card colors (W, U, B, R, G) |
-| `color_identity` | array | Commander color identity |
-| `keywords` | array | Keyword abilities |
-| `set` | string | Set code |
-| `set_name` | string | Full set name |
-| `rarity` | string | common, uncommon, rare, mythic |
-| `artist` | string | Card artist |
-| `released_at` | string | Release date (YYYY-MM-DD) |
-| `flavor_text` | string | Flavor text |
-| `collector_number` | string | Collector number |
-| `layout` | string | Card layout (normal, transform, modal_dfc, split, adventure, etc.) |
-| `produced_mana` | array | Mana colors this card can produce |
-| `watermark` | string | Guild/faction watermark |
-| `produces_tokens` | array | Names of tokens this card creates |
-| `image_uris` | object | Image URLs (small, normal, large, etc.) |
-| `legalities` | object | Format legality map |
-| `prices` | object | Price data (usd, eur, tix) |
+| Field | Type | Search | Description |
+|-------|------|:------:|-------------|
+| `id` | string | ✓ | Scryfall card ID |
+| `oracle_id` | string | | Oracle ID (same across printings) |
+| `name` | string | ✓ | Card name |
+| `mana_cost` | string | ✓ | Mana cost (e.g., "{2}{U}{U}") |
+| `cmc` | number | ✓ | Mana value |
+| `type_line` | string | ✓ | Full type line |
+| `oracle_text` | string | ✓ | Rules text |
+| `power` | string | ✓ | Power (creatures) |
+| `toughness` | string | ✓ | Toughness (creatures) |
+| `loyalty` | string | ✓ | Starting loyalty (planeswalkers) |
+| `colors` | array | ✓ | Card colors (W, U, B, R, G) |
+| `color_identity` | array | | Commander color identity |
+| `keywords` | array | | Keyword abilities |
+| `set` | string | ✓ | Set code |
+| `set_name` | string | | Full set name |
+| `rarity` | string | ✓ | common, uncommon, rare, mythic |
+| `artist` | string | | Card artist |
+| `released_at` | string | | Release date (YYYY-MM-DD) |
+| `flavor_text` | string | | Flavor text |
+| `collector_number` | string | | Collector number |
+| `layout` | string | | Card layout (normal, transform, modal_dfc, split, adventure, etc.) |
+| `produced_mana` | array | | Mana colors this card can produce |
+| `watermark` | string | | Guild/faction watermark |
+| `produces_tokens` | array | | Names of tokens this card creates |
+| `image_uris` | object | | Image URLs (small, normal, large, etc.) |
+| `legalities` | object | | Format legality map |
+| `prices` | object | | Price data (usd, eur, tix) |
 
 ## Query Syntax
 

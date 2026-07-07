@@ -176,6 +176,93 @@ class TestServerSearchCards:
                 assert result["total_count"] > len(result["cards"])
 
     @pytest.mark.asyncio
+    async def test_search_results_are_compact_by_default(
+        self, sample_cards: list[dict[str, Any]]
+    ):
+        """Search results should omit bulky fields the agent rarely needs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool("search_cards", {"query": "c:red"})
+
+                assert len(result["cards"]) >= 1
+                for card in result["cards"]:
+                    assert "legalities" not in card
+                    assert "image_uris" not in card
+                    assert "prices" not in card
+                    assert "flavor_text" not in card
+                    assert "artist" not in card
+
+    @pytest.mark.asyncio
+    async def test_compact_results_include_core_fields(
+        self, sample_cards: list[dict[str, Any]]
+    ):
+        """Compact results should still carry everything needed to reason about a card."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "search_cards", {"query": "Lightning Bolt"}
+                )
+
+                card = result["cards"][0]
+                for field in ("id", "name", "mana_cost", "cmc", "type_line",
+                              "oracle_text", "colors", "set", "rarity"):
+                    assert field in card, f"missing {field}"
+
+    @pytest.mark.asyncio
+    async def test_compact_results_omit_null_fields(
+        self, sample_cards: list[dict[str, Any]]
+    ):
+        """Fields that are null for a card (e.g. power on an instant) are dropped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "search_cards", {"query": "t:instant"}
+                )
+
+                assert len(result["cards"]) >= 1
+                for card in result["cards"]:
+                    assert "power" not in card
+                    assert "loyalty" not in card
+
+    @pytest.mark.asyncio
+    async def test_search_verbose_returns_full_cards(
+        self, sample_cards: list[dict[str, Any]]
+    ):
+        """verbose=true should return the full card objects."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "search_cards", {"query": "c:red", "verbose": True}
+                )
+
+                assert len(result["cards"]) >= 1
+                card = result["cards"][0]
+                assert "legalities" in card
+                assert "prices" in card
+
+    @pytest.mark.asyncio
+    async def test_get_card_stays_full_detail(self, sample_cards: list[dict[str, Any]]):
+        """get_card is the full-detail path and must keep bulky fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ScryfallServer(Path(tmpdir)) as server:
+                server._init_db(sample_cards)
+
+                result = await server.call_tool(
+                    "get_card", {"name": "Lightning Bolt"}
+                )
+
+                assert "legalities" in result
+                assert "prices" in result
+
+    @pytest.mark.asyncio
     async def test_search_cards_error_handling(self, sample_cards: list[dict[str, Any]]):
         """Should return error for invalid queries."""
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -133,7 +133,9 @@ class ScryfallServer:
         return [
             Tool(
                 name="search_cards",
-                description=f"Search for Magic: The Gathering cards using Scryfall syntax. {SYNTAX_SUMMARY}",
+                description="Search for Magic: The Gathering cards using Scryfall syntax. "
+                "Results are compact (name, cost, type, text, colors, set, rarity); "
+                f"use get_card or verbose=true for full detail. {SYNTAX_SUMMARY}",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -153,6 +155,13 @@ class ScryfallServer:
                             "description": "Number of results to skip for pagination (default 0)",
                             "default": 0,
                             "minimum": 0,
+                        },
+                        "verbose": {
+                            "type": "boolean",
+                            "description": "Return full card objects (legalities, prices, "
+                            "image URIs, ...) instead of the compact projection "
+                            "(default false)",
+                            "default": False,
                         },
                     },
                     "required": ["query"],
@@ -257,11 +266,37 @@ class ScryfallServer:
         else:
             return {"error": f"Unknown tool: {name}"}
 
+    # Fields included in compact (default) search results. Everything else
+    # (legalities, image_uris, prices, flavor_text, ...) is bulk the agent
+    # rarely needs per-result — it lives behind get_card or verbose=true.
+    COMPACT_FIELDS = (
+        "id",
+        "name",
+        "mana_cost",
+        "cmc",
+        "type_line",
+        "oracle_text",
+        "power",
+        "toughness",
+        "loyalty",
+        "colors",
+        "set",
+        "rarity",
+    )
+
+    def _compact_card(self, card: dict[str, Any]) -> dict[str, Any]:
+        """Project a card down to COMPACT_FIELDS, dropping null values."""
+        return {
+            field: card[field]
+            for field in self.COMPACT_FIELDS
+            if card.get(field) is not None
+        }
+
     async def _search_cards(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Search for cards.
 
         Args:
-            arguments: {"query": str, "limit": int, "offset": int}
+            arguments: {"query": str, "limit": int, "offset": int, "verbose": bool}
 
         Returns:
             {"cards": [...], "total_count": int, "query_time_ms": int, "offset": int}
@@ -269,6 +304,7 @@ class ScryfallServer:
         query = arguments.get("query", "")
         limit = max(1, min(arguments.get("limit", 20), 100))
         offset = max(0, arguments.get("offset", 0))
+        verbose = bool(arguments.get("verbose", False))
 
         start_time = time.time()
 
@@ -286,6 +322,9 @@ class ScryfallServer:
             store = self._get_store()
             cards = store.execute_query(parsed, limit=limit, offset=offset)
             total_count = store.count_matches(parsed)
+
+        if not verbose:
+            cards = [self._compact_card(card) for card in cards]
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 
