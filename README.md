@@ -31,10 +31,10 @@ Register the MCP server using the Claude Code CLI:
 
 ```bash
 # Add for all projects (user scope)
-claude mcp add scryfall-local --scope user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
+claude mcp add scryfall-local --scope user -- /path/to/scryfall-local/.venv/bin/python -m scryfall_local.server
 
 # Or add for current project only (local scope)
-claude mcp add scryfall-local -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
+claude mcp add scryfall-local -- /path/to/scryfall-local/.venv/bin/python -m scryfall_local.server
 ```
 
 Replace `/path/to/scryfall-local` with the actual path to this repository.
@@ -43,13 +43,13 @@ This produces the following entry in `~/.claude.json` (or `.claude/settings.json
 
 ```json
 "scryfall-local": {
-  "command": "/bin/bash",
-  "args": ["-c", "cd /path/to/scryfall-local && .venv/bin/python -m src.server"],
+  "command": "/path/to/scryfall-local/.venv/bin/python",
+  "args": ["-m", "scryfall_local.server"],
   "type": "stdio"
 }
 ```
 
-> **Note:** The `cd &&` wrapper is used instead of the `cwd` field because the VS Code extension [ignores `cwd`](https://github.com/anthropics/claude-code/issues/43422), causing module path collisions when multiple MCP servers share the same `-m src.server` entry point.
+> **Note:** No working-directory wrapper is needed: the venv's editable install makes `scryfall_local` importable from any cwd, the package name is unique (unlike the old `src`, which collided with other projects' `src/` packages when the VS Code extension [ignored `cwd`](https://github.com/anthropics/claude-code/issues/43422)), and the server resolves its data directory relative to its own file, not the cwd.
 
 **Important notes:**
 - You do **not** need to manually start the server - Claude Code automatically starts MCP servers when it launches
@@ -64,8 +64,8 @@ Alternatively, add this snippet to your project's `.claude/settings.json`:
 {
   "mcpServers": {
     "scryfall-local": {
-      "command": "/bin/bash",
-      "args": ["-c", "cd /path/to/scryfall-local && .venv/bin/python -m src.server"],
+      "command": "/path/to/scryfall-local/.venv/bin/python",
+      "args": ["-m", "scryfall_local.server"],
       "type": "stdio"
     }
   }
@@ -79,7 +79,7 @@ Or to your user settings at `~/.claude/settings.json` to make it available acros
 For development or testing outside of Claude Code:
 
 ```bash
-uv run python -m src.server
+uv run python -m scryfall_local.server
 ```
 
 ### CLI Commands
@@ -88,22 +88,22 @@ The CLI tool manages downloading and importing card data:
 
 ```bash
 # Check current data status
-uv run python -m src.cli status
+uv run python -m scryfall_local.cli status
 
 # Download bulk card data (~160 MB for oracle_cards)
-uv run python -m src.cli download
+uv run python -m scryfall_local.cli download
 
 # Download a larger dataset with all printings (~2.3 GB)
-uv run python -m src.cli download --type all_cards
+uv run python -m scryfall_local.cli download --type all_cards
 
 # Force re-download even if data is current
-uv run python -m src.cli download --force
+uv run python -m scryfall_local.cli download --force
 
 # Import downloaded JSON into SQLite database
-uv run python -m src.cli import
+uv run python -m scryfall_local.cli import
 
 # Import a specific JSON file
-uv run python -m src.cli import --file path/to/cards.json
+uv run python -m scryfall_local.cli import --file path/to/cards.json
 ```
 
 #### Available Data Types
@@ -116,7 +116,7 @@ uv run python -m src.cli import --file path/to/cards.json
 
 > **Note:** The default `oracle_cards` includes one unique card per Oracle ID - ideal for most use cases. If you need every printing (different sets, promos, languages), use `all_cards`:
 > ```bash
-> python -m src.cli download --type all_cards
+> python -m scryfall_local.cli download --type all_cards
 > ```
 
 #### Workflow
@@ -127,8 +127,8 @@ uv run python -m src.cli import --file path/to/cards.json
 If you download data separately, run `import` to load it into the database:
 
 ```bash
-uv run python -m src.cli download   # Downloads JSON file
-uv run python -m src.cli import     # Imports into SQLite (auto-detects JSON file)
+uv run python -m scryfall_local.cli download   # Downloads JSON file
+uv run python -m scryfall_local.cli import     # Imports into SQLite (auto-detects JSON file)
 ```
 
 > **Atomic download:** Data is written to a temporary file and atomically renamed on completion, preventing partial files if interrupted.
@@ -256,14 +256,14 @@ uv run pytest -v
 ### Test Coverage
 
 ```bash
-uv run pytest --cov=src --cov-report=term-missing
+uv run pytest --cov=scryfall_local --cov-report=term-missing
 ```
 
 ## Architecture
 
 ```
 scryfall-local/
-├── src/
+├── scryfall_local/
 │   ├── server.py          # MCP server (low-level Server class)
 │   ├── data_manager.py    # Download/cache bulk data
 │   ├── query_parser.py    # Scryfall syntax parser

@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from src.query_parser import MULTI_VALUE_FILTERS, Condition, ParsedQuery
+from scryfall_local.query_parser import MULTI_VALUE_FILTERS, Condition, ParsedQuery
 
 logger = logging.getLogger(__name__)
 

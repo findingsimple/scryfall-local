@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.query_parser import QueryError, QueryParser
+from scryfall_local.query_parser import QueryError, QueryParser
 
 
 class TestQueryParserBasicName:

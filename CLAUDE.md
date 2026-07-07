@@ -11,7 +11,7 @@ A local MCP server that caches Scryfall's Magic: The Gathering card data, enabli
 ## Architecture
 
 ```
-src/
+scryfall_local/
 ├── server.py        # MCP server (low-level Server class)
 ├── cli.py           # CLI for download/import/status
 ├── card_store.py    # SQLite storage with FTS5
@@ -30,19 +30,19 @@ uv sync
 uv run pytest -v
 
 # Lint (config in pyproject.toml; tests ignore SIM117/E501 by design)
-uv run ruff check src tests
+uv run ruff check scryfall_local tests
 
 # Check data status
-uv run python -m src.cli status
+uv run python -m scryfall_local.cli status
 
 # Download/update card data
-uv run python -m src.cli download
+uv run python -m scryfall_local.cli download
 
 # Import JSON into database
-uv run python -m src.cli import
+uv run python -m scryfall_local.cli import
 
 # Run MCP server manually (for testing only)
-uv run python -m src.server
+uv run python -m scryfall_local.server
 ```
 
 ## MCP Server Setup
@@ -50,8 +50,8 @@ uv run python -m src.server
 Register with Claude Code CLI (no manual server start needed):
 
 ```bash
-# Add for all projects (uses cd wrapper — VS Code extension ignores cwd field)
-claude mcp add scryfall-local --scope user -- /bin/bash -c "cd /path/to/scryfall-local && .venv/bin/python -m src.server"
+# Add for all projects (no cwd wrapper needed — editable install + unique package name)
+claude mcp add scryfall-local --scope user -- /path/to/scryfall-local/.venv/bin/python -m scryfall_local.server
 
 # Verify connection
 claude mcp list
@@ -71,7 +71,7 @@ Tests are written TDD-style with pytest:
 
 ```bash
 uv run pytest -v                           # Run all tests
-uv run pytest --cov=src                    # With coverage
+uv run pytest --cov=scryfall_local                    # With coverage
 uv run pytest tests/test_query_parser.py   # Single file
 ```
 

@@ -35,7 +35,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["scryfall_local"]
 
 [tool.ruff]
 line-length = 100

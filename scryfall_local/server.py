@@ -18,11 +18,11 @@ import mcp.types as types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-from src import __version__
-from src.card_store import CardStore
-from src.data_manager import DataManager
-from src.import_utils import import_to_temp_and_swap
-from src.query_parser import SYNTAX_SUMMARY, QueryError, QueryParser
+from scryfall_local import __version__
+from scryfall_local.card_store import CardStore
+from scryfall_local.data_manager import DataManager
+from scryfall_local.import_utils import import_to_temp_and_swap
+from scryfall_local.query_parser import SYNTAX_SUMMARY, QueryError, QueryParser
 
 logger = logging.getLogger(__name__)
 
@@ -310,8 +310,8 @@ class ScryfallServer:
         return (
             "The card database is empty — no card data has been imported, so "
             "every lookup will come back empty. Run the refresh_data tool, or "
-            "from the command line: `uv run python -m src.cli download` then "
-            "`uv run python -m src.cli import`."
+            "from the command line: `uv run python -m scryfall_local.cli download` then "
+            "`uv run python -m scryfall_local.cli import`."
         )
 
     def _compact_card(self, card: dict[str, Any]) -> dict[str, Any]:

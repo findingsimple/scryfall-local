@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.server import ScryfallServer, create_server
+from scryfall_local.server import ScryfallServer, create_server
 
 
 class TestServerToolListing:
@@ -784,7 +784,7 @@ class TestServerLowLevel:
 
     def test_version_matches_package(self):
         """Server version should match package __version__."""
-        from src import __version__
+        from scryfall_local import __version__
         with tempfile.TemporaryDirectory() as tmpdir:
             with ScryfallServer(Path(tmpdir)) as server:
                 assert server.version == __version__

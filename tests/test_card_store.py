@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from src.card_store import CardStore
-from src.query_parser import ParsedQuery
+from scryfall_local.card_store import CardStore
+from scryfall_local.query_parser import ParsedQuery
 
 
 class TestCardStoreSchema:
@@ -2488,7 +2488,7 @@ class TestLayoutFilter:
             store.insert_cards(double_faced_cards)
 
             # Search for transform cards
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
             parsed = parser.parse("layout:transform")
             results = store.execute_query(parsed)
@@ -2509,7 +2509,7 @@ class TestLayoutFilter:
 
             store.insert_cards(double_faced_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
             parsed = parser.parse("layout:modal_dfc")
             results = store.execute_query(parsed)
@@ -2528,7 +2528,7 @@ class TestLayoutFilter:
 
             store.insert_cards(double_faced_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
             parsed = parser.parse("layout:adventure")
             results = store.execute_query(parsed)
@@ -2547,7 +2547,7 @@ class TestLayoutFilter:
 
             store.insert_cards(double_faced_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
             parsed = parser.parse("layout:split")
             results = store.execute_query(parsed)
@@ -2566,7 +2566,7 @@ class TestLayoutFilter:
 
             store.insert_cards(double_faced_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
             parsed = parser.parse("-layout:transform")
             results = store.execute_query(parsed)
@@ -2605,7 +2605,7 @@ class TestLayoutFilter:
 
             store.insert_cards(double_faced_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Transform cards that are creatures
@@ -2679,7 +2679,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             parsed = parser.parse("pt:zombie")
@@ -2698,7 +2698,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Lowercase "goblin" should match "Goblin"
@@ -2718,7 +2718,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             parsed = parser.parse('pt:"Soldier"')
@@ -2737,7 +2737,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             parsed = parser.parse("-pt:zombie")
@@ -2758,7 +2758,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Token creators that are creatures
@@ -2778,7 +2778,7 @@ class TestProducesTokensFilter:
 
             store.insert_cards(token_creating_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             parsed = parser.parse("produces_token:zombie")
@@ -2801,7 +2801,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Exact match with accent
@@ -2821,7 +2821,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Partial match with accent
@@ -2841,7 +2841,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Partial match with hyphen and accent
@@ -2861,7 +2861,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Partial match with apostrophe
@@ -2881,7 +2881,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Partial match with accented a
@@ -2901,7 +2901,7 @@ class TestUnicodeCardNames:
 
             store.insert_cards(unicode_cards)
 
-            from src.query_parser import QueryParser
+            from scryfall_local.query_parser import QueryParser
             parser = QueryParser()
 
             # Partial match with â
@@ -3329,23 +3329,23 @@ class TestFTS5Escaping:
     """Test the _escape_fts5 helper function."""
 
     def test_escape_plain_text(self):
-        from src.card_store import _escape_fts5
+        from scryfall_local.card_store import _escape_fts5
         assert _escape_fts5("flying") == '"flying"'
 
     def test_escape_internal_quotes(self):
-        from src.card_store import _escape_fts5
+        from scryfall_local.card_store import _escape_fts5
         assert _escape_fts5('enters "the" battlefield') == '"enters ""the"" battlefield"'
 
     def test_escape_fts5_operators(self):
-        from src.card_store import _escape_fts5
+        from scryfall_local.card_store import _escape_fts5
         assert _escape_fts5("NOT flying") == '"NOT flying"'
 
     def test_escape_asterisk(self):
-        from src.card_store import _escape_fts5
+        from scryfall_local.card_store import _escape_fts5
         assert _escape_fts5("fire*") == '"fire*"'
 
     def test_escape_empty_string(self):
-        from src.card_store import _escape_fts5
+        from scryfall_local.card_store import _escape_fts5
         assert _escape_fts5("") == '""'
 
 
@@ -3353,23 +3353,23 @@ class TestLikeEscaping:
     """Test the _escape_like helper function."""
 
     def test_plain_text_unchanged(self):
-        from src.card_store import _escape_like
+        from scryfall_local.card_store import _escape_like
         assert _escape_like("flying") == "flying"
 
     def test_percent_escaped(self):
-        from src.card_store import _escape_like
+        from scryfall_local.card_store import _escape_like
         assert _escape_like("100%") == "100\\%"
 
     def test_underscore_escaped(self):
-        from src.card_store import _escape_like
+        from scryfall_local.card_store import _escape_like
         assert _escape_like("a_b") == "a\\_b"
 
     def test_backslash_escaped(self):
-        from src.card_store import _escape_like
+        from scryfall_local.card_store import _escape_like
         assert _escape_like("a\\b") == "a\\\\b"
 
     def test_combined(self):
-        from src.card_store import _escape_like
+        from scryfall_local.card_store import _escape_like
         assert _escape_like("100%_\\x") == "100\\%\\_\\\\x"
 
 

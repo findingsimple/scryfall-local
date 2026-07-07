@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.card_store import CardStore
-from src.import_utils import import_cards_streaming, import_to_temp_and_swap
+from scryfall_local.card_store import CardStore
+from scryfall_local.import_utils import import_cards_streaming, import_to_temp_and_swap
 
 
 class TestImportCardsStreaming:
@@ -520,7 +520,7 @@ class TestImportToTempAndSwap:
             json_file = self._make_json(tmpdir_path, self._sample_cards(5))
 
             with patch(
-                "src.import_utils.import_cards_streaming",
+                "scryfall_local.import_utils.import_cards_streaming",
                 side_effect=RuntimeError("Simulated import failure"),
             ), pytest.raises(RuntimeError, match="Simulated import failure"):
                 import_to_temp_and_swap(json_file, db_path)
@@ -540,7 +540,7 @@ class TestImportToTempAndSwap:
             json_file = self._make_json(tmpdir_path, self._sample_cards())
 
             with patch(
-                "src.import_utils.import_cards_streaming",
+                "scryfall_local.import_utils.import_cards_streaming",
                 side_effect=RuntimeError("Simulated failure"),
             ), pytest.raises(RuntimeError):
                 import_to_temp_and_swap(json_file, db_path)

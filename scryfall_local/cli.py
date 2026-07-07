@@ -5,8 +5,8 @@ import asyncio
 import sys
 from pathlib import Path
 
-from src.data_manager import DataManager
-from src.import_utils import import_to_temp_and_swap
+from scryfall_local.data_manager import DataManager
+from scryfall_local.import_utils import import_to_temp_and_swap
 
 
 def format_size(bytes_size: int) -> str:
@@ -141,7 +141,7 @@ async def show_status(data_dir: Path) -> None:
 
         if status.is_stale:
             print()
-            print("Run 'python -m src.cli download' to update.")
+            print("Run 'python -m scryfall_local.cli download' to update.")
 
     finally:
         await manager.close()
@@ -159,7 +159,7 @@ async def import_data(data_dir: Path, json_file: Path | None = None) -> None:
 
             if not json_files:
                 print("Error: No JSON data file found in data directory.")
-                print("Run 'python -m src.cli download' first.")
+                print("Run 'python -m scryfall_local.cli download' first.")
                 return
 
             # Use most recent file

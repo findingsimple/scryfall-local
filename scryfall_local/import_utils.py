@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from src.card_store import CardStore
+from scryfall_local.card_store import CardStore
 
 logger = logging.getLogger(__name__)
 

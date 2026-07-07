@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from src.card_store import CardStore
-from src.query_parser import QueryError, QueryParser
+from scryfall_local.card_store import CardStore
+from scryfall_local.query_parser import QueryError, QueryParser
 
 BEHAVIOUR_CARDS: list[dict[str, Any]] = [
     {

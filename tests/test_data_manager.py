@@ -10,7 +10,7 @@ import httpx
 import pytest
 import respx
 
-from src.data_manager import DataManager, DataStatus
+from scryfall_local.data_manager import DataManager, DataStatus
 
 # Sample bulk data catalog response
 SAMPLE_CATALOG = {
@@ -811,7 +811,7 @@ class TestRetryJitter:
                     sleep_values.append(delay)
 
                 with patch.object(manager, "_validated_get", side_effect=patched_get), \
-                     patch("src.data_manager.random.uniform", return_value=0.75) as mock_uniform, \
+                     patch("scryfall_local.data_manager.random.uniform", return_value=0.75) as mock_uniform, \
                      patch("asyncio.sleep", side_effect=mock_sleep):
                     await manager.download_bulk_data("all_cards", max_retries=1)
 
@@ -874,7 +874,7 @@ class TestRetryJitter:
 
                 # random.uniform returns 0.5 each time
                 with patch.object(manager, "_validated_get", side_effect=patched_get), \
-                     patch("src.data_manager.random.uniform", return_value=0.5) as mock_uniform, \
+                     patch("scryfall_local.data_manager.random.uniform", return_value=0.5) as mock_uniform, \
                      patch("asyncio.sleep", side_effect=mock_sleep):
                     await manager.download_bulk_data("all_cards", max_retries=2)
 

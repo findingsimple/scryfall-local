@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.cli import (
+from scryfall_local.cli import (
     download_data,
     format_size,
     import_data,
@@ -158,7 +158,7 @@ class TestImportData:
             assert db_path.exists()
 
             # Verify cards were imported
-            from src.card_store import CardStore
+            from scryfall_local.card_store import CardStore
             with CardStore(db_path) as store:
                 assert store.get_card_count() == 2
 
@@ -219,7 +219,7 @@ class TestDownloadData:
             tmpdir_path = Path(tmpdir)
 
             # Mock DataManager to return not stale
-            with patch("src.cli.DataManager") as MockDataManager:
+            with patch("scryfall_local.cli.DataManager") as MockDataManager:
                 mock_manager = AsyncMock()
                 mock_manager.is_cache_stale = AsyncMock(return_value=False)
                 mock_manager.get_status = AsyncMock(return_value=MagicMock(
@@ -241,7 +241,7 @@ class TestDownloadData:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
 
-            with patch("src.cli.DataManager") as MockDataManager:
+            with patch("scryfall_local.cli.DataManager") as MockDataManager:
                 mock_manager = AsyncMock()
                 mock_manager.is_cache_stale = AsyncMock(return_value=True)
                 mock_manager.get_bulk_data_info = AsyncMock(return_value=None)
@@ -262,7 +262,7 @@ class TestDownloadDataDefaults:
     async def test_download_defaults_to_oracle_cards(self):
         """Calling download_data() without data_type should use oracle_cards."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("src.cli.DataManager") as MockDataManager:
+            with patch("scryfall_local.cli.DataManager") as MockDataManager:
                 mock_manager = AsyncMock()
                 mock_manager.is_cache_stale = AsyncMock(return_value=True)
                 mock_manager.get_bulk_data_info = AsyncMock(return_value={
@@ -279,7 +279,7 @@ class TestDownloadDataDefaults:
                 MockDataManager.return_value = mock_manager
 
                 with patch("builtins.print"), \
-                     patch("src.cli.import_to_temp_and_swap", return_value=(100, 0)):
+                     patch("scryfall_local.cli.import_to_temp_and_swap", return_value=(100, 0)):
                     await download_data(Path(tmpdir))
 
                 mock_manager.download_bulk_data.assert_called_once()
@@ -301,7 +301,7 @@ class TestMain:
         """Should call show_status for status command."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("sys.argv", ["cli", "--data-dir", tmpdir, "status"]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
                     # Verify it was called with show_status coroutine
@@ -316,7 +316,7 @@ class TestMain:
         """Should call import_data for import command."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("sys.argv", ["cli", "--data-dir", tmpdir, "import"]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
@@ -325,7 +325,7 @@ class TestMain:
         """Should call download_data for download command."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("sys.argv", ["cli", "--data-dir", tmpdir, "download"]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
@@ -337,7 +337,7 @@ class TestMain:
             assert not new_dir.exists()
 
             with patch("sys.argv", ["cli", "--data-dir", str(new_dir), "status"]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
 
@@ -347,7 +347,7 @@ class TestMain:
         """Should pass type argument to download_data."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("sys.argv", ["cli", "--data-dir", tmpdir, "download", "--type", "oracle_cards"]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
@@ -359,7 +359,7 @@ class TestMain:
             json_file.touch()
 
             with patch("sys.argv", ["cli", "--data-dir", tmpdir, "import", "--file", str(json_file)]):
-                with patch("src.cli.asyncio.run") as mock_run:
+                with patch("scryfall_local.cli.asyncio.run") as mock_run:
                     main()
                     mock_run.assert_called_once()
                     mock_run.call_args[0][0].close()  # Close unawaited coroutine
